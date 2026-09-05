@@ -94,15 +94,23 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
         HttpServletRequest requestWrapper = wrapRequestForLogging(request);
         ContentCachingResponseWrapper responseWrapper = new ContentCachingResponseWrapper(response);
         installMdc(requestWrapper);
+        // Pre-snapshot: CachedBodyHttpServletRequest has bytes immediately available.
+        // ContentCachingRequestWrapper only fills its buffer after the chain reads the stream,
+        // so we snapshot again after the chain in the finally block.
+        byte[] preChainPayload = snapshotRequestPayload(requestWrapper);
         try {
-            writeRequestEvent(requestWrapper);
+            writeRequestEvent(requestWrapper, preChainPayload);
             filterChain.doFilter(requestWrapper, responseWrapper);
         } catch (Throwable ex) {
             failure = ex;
             throw ex;
         } finally {
             try {
-                writeResponseEvent(requestWrapper, responseWrapper, start, failure);
+                // Re-snapshot after chain: picks up bytes from ContentCachingRequestWrapper
+                // that were only populated after the request body was read.
+                byte[] postChainPayload = snapshotRequestPayload(requestWrapper);
+                byte[] resolvedPayload = postChainPayload.length > 0 ? postChainPayload : preChainPayload;
+                writeResponseEvent(requestWrapper, responseWrapper, start, failure, resolvedPayload);
             } catch (RuntimeException ex) {
                 logger.warn("HTTP logging failed safely: " + ex);
             } finally {
@@ -151,7 +159,7 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
                 && contentLength <= properties.getPayload().getRequestMaxSize();
     }
 
-    private void writeRequestEvent(HttpServletRequest request) {
+    private void writeRequestEvent(HttpServletRequest request, byte[] snapshotedPayload) {
         UserIdentity identity = safeUser().orElse(UserIdentity.anonymous());
         HttpLogEvent event = baseHttpEvent(request, identity);
         event.setType(LogCategory.HTTP_REQUEST);
@@ -163,14 +171,14 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
         if (properties.getInclude().isRequestParameters()) {
             event.requestParameters(masker.maskMap(parameters(request), MaskingTarget.QUERY_PARAMETER));
         }
-        if (shouldLogRequestPayload(request)) {
-            event.requestPayload(payload(requestPayloadBytes(request), request.getCharacterEncoding(), properties.getPayload().getRequestMaxSize()));
+        if (shouldLogRequestPayload(request) && snapshotedPayload != null && snapshotedPayload.length > 0) {
+            event.requestPayload(payload(snapshotedPayload, request.getCharacterEncoding(), properties.getPayload().getRequestMaxSize()));
         }
         httpLogWriter.write(event);
     }
 
     private void writeResponseEvent(HttpServletRequest request, ContentCachingResponseWrapper response,
-                                    long start, Throwable failure) {
+                                    long start, Throwable failure, byte[] snapshotedRequestPayload) {
         int status = response.getStatus();
         UserIdentity identity = safeUser().orElse(UserIdentity.anonymous());
         HttpLogEvent event = baseHttpEvent(request, identity);
@@ -182,6 +190,11 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
                 .responseTimeMs((System.nanoTime() - start) / 1_000_000);
         if (properties.getInclude().isResponseHeaders()) {
             event.responseHeaders(masker.maskMap(responseHeaders(response), MaskingTarget.HEADER));
+        }
+        // Include the request payload on the response event so a single response log line
+        // contains the full round-trip context (request body + response body + timing).
+        if (shouldLogRequestPayload(request) && snapshotedRequestPayload != null && snapshotedRequestPayload.length > 0) {
+            event.requestPayload(payload(snapshotedRequestPayload, request.getCharacterEncoding(), properties.getPayload().getRequestMaxSize()));
         }
         if (shouldLogResponsePayload(response)) {
             event.responsePayload(payload(response.getContentAsByteArray(), response.getCharacterEncoding(), properties.getPayload().getResponseMaxSize()));
@@ -198,9 +211,15 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
                 .endpoint(endpoint(request))
                 .operation(properties.getInclude().isOperation() ? safeOperation(request) : null);
         if (properties.getInclude().isUser()) {
-            event.authenticated(identity.authenticated())
-                    .userId(identity.userId())
-                    .roles(identity.roles());
+            event.authenticated(identity.authenticated());
+            // Only include userId and roles for authenticated users — avoids logging
+            // "user_id": null and "role_ids": [] noise for anonymous/public requests.
+            if (identity.authenticated()) {
+                event.userId(identity.userId());
+                if (identity.roles() != null && !identity.roles().isEmpty()) {
+                    event.roles(identity.roles());
+                }
+            }
         }
         if (properties.getInclude().isIp()) {
             event.ip(safeIp(request));
@@ -219,10 +238,20 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
                 && contentCanBeLogged(request.getContentType());
     }
 
-    private byte[] requestPayloadBytes(HttpServletRequest request) {
+    /**
+     * Snapshot the request body bytes eagerly (before the filter chain runs) so they
+     * can be attached to both the request event and the response event.
+     * Returns an empty array when payload logging is disabled or the content type is excluded.
+     */
+    private byte[] snapshotRequestPayload(HttpServletRequest request) {
+        if (!shouldLogRequestPayload(request)) {
+            return new byte[0];
+        }
         if (request instanceof CachedBodyHttpServletRequest cached) {
             return cached.getCachedBody();
         }
+        // For ContentCachingRequestWrapper the body is only available after the
+        // chain reads the stream; return empty here and it will be filled after chain.
         if (request instanceof ContentCachingRequestWrapper cached) {
             return cached.getContentAsByteArray();
         }

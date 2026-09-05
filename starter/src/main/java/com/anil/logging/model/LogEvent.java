@@ -57,7 +57,9 @@ public class LogEvent {
     }
 
     public LogEvent field(String key, Object value) {
-        fields.put(key, value);
+        if (value != null) {
+            fields.put(key, value);
+        }
         return this;
     }
 }

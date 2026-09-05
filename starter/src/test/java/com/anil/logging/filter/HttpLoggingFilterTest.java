@@ -8,6 +8,7 @@ import com.anil.logging.masking.JsonSensitiveDataMasker;
 import com.anil.logging.model.HttpLogEvent;
 import com.anil.logging.model.LogCategory;
 import com.anil.logging.operation.DefaultOperationResolver;
+import com.anil.logging.security.DefaultUserIdentityProvider;
 import com.anil.logging.security.UserIdentity;
 import com.anil.logging.trace.DefaultTraceContextProvider;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -19,9 +20,15 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +43,7 @@ class HttpLoggingFilterTest {
     @AfterEach
     void clear() {
         MDC.clear();
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -143,6 +151,62 @@ class HttpLoggingFilterTest {
         assertThat(writer.events.get(1).getFields()).doesNotContainKeys("request_payload", "response_payload");
     }
 
+    @Test
+    void jwtUserIdAndRolesArePopulatedInLogEventsFromJwtClaims() throws Exception {
+        // Wire the real DefaultUserIdentityProvider backed by Spring Security context.
+        Jwt jwt = Jwt.withTokenValue("test-token")
+                .header("alg", "none")
+                .issuedAt(Instant.now())
+                .expiresAt(Instant.now().plusSeconds(60))
+                .claim("user_id", "jwt-user-42")
+                .claim("role_ids", List.of("ADMIN", "MANAGER"))
+                .build();
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(jwt, "test-token", List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+
+        HttpLoggingFilter filter = filterWithRealIdentityProvider();
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/profile");
+        request.addHeader("X-Request-ID", "jwt-req-1");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = (req, res) -> ((HttpServletResponse) res).setStatus(200);
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(writer.events).hasSize(2);
+        HttpLogEvent requestEvent = writer.events.get(0);
+        HttpLogEvent responseEvent = writer.events.get(1);
+        // Both request and response events should carry the JWT-derived identity
+        assertThat(requestEvent.getFields()).containsEntry("user_id", "jwt-user-42")
+                .containsEntry("role_ids", List.of("ADMIN", "MANAGER"))
+                .containsEntry("authenticated", true);
+        assertThat(responseEvent.getFields()).containsEntry("user_id", "jwt-user-42")
+                .containsEntry("role_ids", List.of("ADMIN", "MANAGER"));
+        // MDC should be cleaned up after request
+        assertThat(MDC.get(MdcKeys.USER_ID)).isNull();
+    }
+
+    @Test
+    void anonymousRequestDoesNotIncludeUserIdOrRolesInLogEvents() throws Exception {
+        AnonymousAuthenticationToken anonymousToken = new AnonymousAuthenticationToken(
+                "key", "anonymousUser", List.of(new SimpleGrantedAuthority("ROLE_ANONYMOUS")));
+        SecurityContextHolder.getContext().setAuthentication(anonymousToken);
+
+        HttpLoggingFilter filter = filterWithRealIdentityProvider();
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/public");
+        request.addHeader("X-Request-ID", "anon-req-1");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = (req, res) -> ((HttpServletResponse) res).setStatus(200);
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(writer.events).hasSize(2);
+        HttpLogEvent responseEvent = writer.events.get(1);
+        // user_id and role_ids must NOT be present for anonymous requests
+        assertThat(responseEvent.getFields()).doesNotContainKey("user_id");
+        assertThat(responseEvent.getFields()).doesNotContainKey("role_ids");
+        assertThat(responseEvent.getFields()).containsEntry("authenticated", false);
+    }
+
     private HttpLoggingFilter filter() {
         JsonSensitiveDataMasker masker = new JsonSensitiveDataMasker(properties, objectMapper);
         return new HttpLoggingFilter(properties,
@@ -150,6 +214,21 @@ class HttpLoggingFilterTest {
                 masker,
                 new DefaultClientIpResolver(properties),
                 () -> java.util.Optional.of(new UserIdentity("1001", List.of("ADMIN"), true)),
+                new DefaultTraceContextProvider(),
+                new DefaultOperationResolver(properties),
+                writer,
+                "order-service",
+                "test");
+    }
+
+    /** Uses the real {@link DefaultUserIdentityProvider} backed by Spring Security context. */
+    private HttpLoggingFilter filterWithRealIdentityProvider() {
+        JsonSensitiveDataMasker masker = new JsonSensitiveDataMasker(properties, objectMapper);
+        return new HttpLoggingFilter(properties,
+                new MdcLoggingContextManager(properties),
+                masker,
+                new DefaultClientIpResolver(properties),
+                new DefaultUserIdentityProvider(properties),
                 new DefaultTraceContextProvider(),
                 new DefaultOperationResolver(properties),
                 writer,
