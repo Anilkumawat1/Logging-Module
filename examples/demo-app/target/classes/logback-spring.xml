@@ -1,0 +1,3 @@
+<configuration>
+    <include resource="com/anil/logging/logback/logback-production-json.xml"/>
+</configuration>

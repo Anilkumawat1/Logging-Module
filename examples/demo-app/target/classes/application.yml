@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: logging-demo
+
+app:
+  logging:
+    service-name: logging-demo
+    environment: local
+    format: json
+    include:
+      request-headers: true
+      response-headers: true
+      request-parameters: true
+      response-payload: true
+    operations:
+      mappings:
+        "POST /api/orders": CREATE_ORDER

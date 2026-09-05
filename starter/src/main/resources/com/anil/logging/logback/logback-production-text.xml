@@ -1,0 +1,25 @@
+<included>
+    <appender name="PRODUCTION_RAW_TEXT_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="PRODUCTION_TEXT_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5level [%X{type:-APPLICATION}] [%X{service:-unknown-service}] [request_id=%X{request_id:-}] [trace_id=%X{trace_id:-}] [user_id=%X{user_id:-}] [thread=%thread] %logger{36} - %msg%n%ex</pattern>
+        </encoder>
+    </appender>
+
+    <logger name="com.anil.logging.http" level="INFO" additivity="false">
+        <appender-ref ref="PRODUCTION_RAW_TEXT_CONSOLE"/>
+    </logger>
+
+    <logger name="com.anil.logging.structured" level="INFO" additivity="false">
+        <appender-ref ref="PRODUCTION_RAW_TEXT_CONSOLE"/>
+    </logger>
+
+    <root level="INFO">
+        <appender-ref ref="PRODUCTION_TEXT_CONSOLE"/>
+    </root>
+</included>

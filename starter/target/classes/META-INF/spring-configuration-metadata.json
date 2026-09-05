@@ -1,0 +1,340 @@
+{
+  "groups": [
+    {
+      "name": "app.logging",
+      "type": "com.anil.logging.config.LoggingProperties",
+      "sourceType": "com.anil.logging.config.LoggingProperties"
+    },
+    {
+      "name": "app.logging.async",
+      "type": "com.anil.logging.config.LoggingProperties$Async",
+      "sourceType": "com.anil.logging.config.LoggingProperties",
+      "sourceMethod": "getAsync()"
+    },
+    {
+      "name": "app.logging.context",
+      "type": "com.anil.logging.config.LoggingProperties$Context",
+      "sourceType": "com.anil.logging.config.LoggingProperties",
+      "sourceMethod": "getContext()"
+    },
+    {
+      "name": "app.logging.context.fields",
+      "type": "com.anil.logging.config.LoggingProperties$Fields",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Context",
+      "sourceMethod": "getFields()"
+    },
+    {
+      "name": "app.logging.context.propagation",
+      "type": "com.anil.logging.config.LoggingProperties$Propagation",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Context",
+      "sourceMethod": "getPropagation()"
+    },
+    {
+      "name": "app.logging.excluded",
+      "type": "com.anil.logging.config.LoggingProperties$Excluded",
+      "sourceType": "com.anil.logging.config.LoggingProperties",
+      "sourceMethod": "getExcluded()"
+    },
+    {
+      "name": "app.logging.identity",
+      "type": "com.anil.logging.config.LoggingProperties$Identity",
+      "sourceType": "com.anil.logging.config.LoggingProperties",
+      "sourceMethod": "getIdentity()"
+    },
+    {
+      "name": "app.logging.include",
+      "type": "com.anil.logging.config.LoggingProperties$Include",
+      "sourceType": "com.anil.logging.config.LoggingProperties",
+      "sourceMethod": "getInclude()"
+    },
+    {
+      "name": "app.logging.ip",
+      "type": "com.anil.logging.config.LoggingProperties$Ip",
+      "sourceType": "com.anil.logging.config.LoggingProperties",
+      "sourceMethod": "getIp()"
+    },
+    {
+      "name": "app.logging.levels",
+      "type": "com.anil.logging.config.LoggingProperties$Levels",
+      "sourceType": "com.anil.logging.config.LoggingProperties",
+      "sourceMethod": "getLevels()"
+    },
+    {
+      "name": "app.logging.masking",
+      "type": "com.anil.logging.config.LoggingProperties$Masking",
+      "sourceType": "com.anil.logging.config.LoggingProperties",
+      "sourceMethod": "getMasking()"
+    },
+    {
+      "name": "app.logging.operations",
+      "type": "com.anil.logging.config.LoggingProperties$Operations",
+      "sourceType": "com.anil.logging.config.LoggingProperties",
+      "sourceMethod": "getOperations()"
+    },
+    {
+      "name": "app.logging.payload",
+      "type": "com.anil.logging.config.LoggingProperties$Payload",
+      "sourceType": "com.anil.logging.config.LoggingProperties",
+      "sourceMethod": "getPayload()"
+    },
+    {
+      "name": "app.logging.request-payload",
+      "type": "com.anil.logging.config.LoggingProperties$RequestPayload",
+      "sourceType": "com.anil.logging.config.LoggingProperties",
+      "sourceMethod": "getRequestPayload()"
+    }
+  ],
+  "properties": [
+    {
+      "name": "app.logging.async.enabled",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Async"
+    },
+    {
+      "name": "app.logging.async.executor-integration",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Async"
+    },
+    {
+      "name": "app.logging.async.task-decorator",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Async"
+    },
+    {
+      "name": "app.logging.categories",
+      "type": "java.util.Map<com.anil.logging.model.LogCategory,java.lang.Boolean>",
+      "sourceType": "com.anil.logging.config.LoggingProperties"
+    },
+    {
+      "name": "app.logging.context.fields.environment",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Fields"
+    },
+    {
+      "name": "app.logging.context.fields.request-id",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Fields"
+    },
+    {
+      "name": "app.logging.context.fields.roles",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Fields"
+    },
+    {
+      "name": "app.logging.context.fields.service",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Fields"
+    },
+    {
+      "name": "app.logging.context.fields.span-id",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Fields"
+    },
+    {
+      "name": "app.logging.context.fields.trace-id",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Fields"
+    },
+    {
+      "name": "app.logging.context.fields.user-id",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Fields"
+    },
+    {
+      "name": "app.logging.context.propagation.allowed-fields",
+      "type": "java.util.List<java.lang.String>",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Propagation"
+    },
+    {
+      "name": "app.logging.context.propagation.enabled",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Propagation"
+    },
+    {
+      "name": "app.logging.enabled",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.anil.logging.config.LoggingProperties"
+    },
+    {
+      "name": "app.logging.environment",
+      "type": "java.lang.String",
+      "sourceType": "com.anil.logging.config.LoggingProperties"
+    },
+    {
+      "name": "app.logging.excluded.content-types",
+      "type": "java.util.List<java.lang.String>",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Excluded"
+    },
+    {
+      "name": "app.logging.excluded.methods",
+      "type": "java.util.List<java.lang.String>",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Excluded"
+    },
+    {
+      "name": "app.logging.excluded.paths",
+      "type": "java.util.List<java.lang.String>",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Excluded"
+    },
+    {
+      "name": "app.logging.format",
+      "type": "com.anil.logging.model.LogFormat",
+      "sourceType": "com.anil.logging.config.LoggingProperties"
+    },
+    {
+      "name": "app.logging.identity.role-id-claims",
+      "type": "java.util.List<java.lang.String>",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Identity"
+    },
+    {
+      "name": "app.logging.identity.user-id-claims",
+      "type": "java.util.List<java.lang.String>",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Identity"
+    },
+    {
+      "name": "app.logging.include.caller",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Include"
+    },
+    {
+      "name": "app.logging.include.domain",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Include"
+    },
+    {
+      "name": "app.logging.include.ip",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Include"
+    },
+    {
+      "name": "app.logging.include.logger",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Include"
+    },
+    {
+      "name": "app.logging.include.operation",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Include"
+    },
+    {
+      "name": "app.logging.include.request-headers",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Include"
+    },
+    {
+      "name": "app.logging.include.request-parameters",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Include"
+    },
+    {
+      "name": "app.logging.include.request-payload",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Include"
+    },
+    {
+      "name": "app.logging.include.response-headers",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Include"
+    },
+    {
+      "name": "app.logging.include.response-payload",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Include"
+    },
+    {
+      "name": "app.logging.include.thread",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Include"
+    },
+    {
+      "name": "app.logging.include.trace",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Include"
+    },
+    {
+      "name": "app.logging.include.url",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Include"
+    },
+    {
+      "name": "app.logging.include.user",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Include"
+    },
+    {
+      "name": "app.logging.ip.headers",
+      "type": "java.util.List<java.lang.String>",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Ip"
+    },
+    {
+      "name": "app.logging.levels.client-error",
+      "type": "java.lang.String",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Levels"
+    },
+    {
+      "name": "app.logging.levels.server-error",
+      "type": "java.lang.String",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Levels"
+    },
+    {
+      "name": "app.logging.levels.success",
+      "type": "java.lang.String",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Levels"
+    },
+    {
+      "name": "app.logging.masking.enabled",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Masking"
+    },
+    {
+      "name": "app.logging.masking.fields",
+      "type": "java.util.List<java.lang.String>",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Masking"
+    },
+    {
+      "name": "app.logging.masking.headers",
+      "type": "java.util.List<java.lang.String>",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Masking"
+    },
+    {
+      "name": "app.logging.masking.query-parameters",
+      "type": "java.util.List<java.lang.String>",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Masking"
+    },
+    {
+      "name": "app.logging.masking.replacement",
+      "type": "java.lang.String",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Masking"
+    },
+    {
+      "name": "app.logging.operations.mappings",
+      "type": "java.util.Map<java.lang.String,java.lang.String>",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Operations"
+    },
+    {
+      "name": "app.logging.payload.log-binary",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Payload"
+    },
+    {
+      "name": "app.logging.payload.request-max-size",
+      "type": "java.lang.Integer",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Payload"
+    },
+    {
+      "name": "app.logging.payload.response-max-size",
+      "type": "java.lang.Integer",
+      "sourceType": "com.anil.logging.config.LoggingProperties$Payload"
+    },
+    {
+      "name": "app.logging.request-payload.on-status-ranges",
+      "type": "java.util.List<java.lang.String>",
+      "sourceType": "com.anil.logging.config.LoggingProperties$RequestPayload"
+    },
+    {
+      "name": "app.logging.service-name",
+      "type": "java.lang.String",
+      "sourceType": "com.anil.logging.config.LoggingProperties"
+    }
+  ],
+  "hints": []
+}

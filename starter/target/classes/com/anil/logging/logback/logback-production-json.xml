@@ -1,0 +1,43 @@
+<included>
+    <appender name="PRODUCTION_RAW_JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="PRODUCTION_JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+            <providers>
+                <timestamp>
+                    <fieldName>timestamp</fieldName>
+                </timestamp>
+                <logLevel>
+                    <fieldName>level</fieldName>
+                </logLevel>
+                <loggerName>
+                    <fieldName>logger</fieldName>
+                </loggerName>
+                <threadName>
+                    <fieldName>thread</fieldName>
+                </threadName>
+                <mdc/>
+                <message/>
+                <stackTrace>
+                    <fieldName>stack_trace</fieldName>
+                </stackTrace>
+            </providers>
+        </encoder>
+    </appender>
+
+    <logger name="com.anil.logging.http" level="INFO" additivity="false">
+        <appender-ref ref="PRODUCTION_RAW_JSON_CONSOLE"/>
+    </logger>
+
+    <logger name="com.anil.logging.structured" level="INFO" additivity="false">
+        <appender-ref ref="PRODUCTION_RAW_JSON_CONSOLE"/>
+    </logger>
+
+    <root level="INFO">
+        <appender-ref ref="PRODUCTION_JSON_CONSOLE"/>
+    </root>
+</included>
