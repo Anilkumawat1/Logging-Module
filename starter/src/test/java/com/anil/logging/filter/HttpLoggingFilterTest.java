@@ -100,7 +100,32 @@ class HttpLoggingFilterTest {
     }
 
     @Test
-    void omitsBinaryPayloadsAndSuccessfulRequestPayloadByDefault() throws Exception {
+    void includesSuccessfulJsonRequestPayloadWhenBodyWasRead() throws Exception {
+        properties.getInclude().setResponsePayload(true);
+        HttpLoggingFilter filter = filter();
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/orders");
+        request.addHeader("X-Request-ID", "success");
+        request.setContentType("application/json");
+        request.setContent("{\"order_id\":\"1001\"}".getBytes(StandardCharsets.UTF_8));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = (req, res) -> {
+            req.getInputStream().readAllBytes();
+            ((HttpServletResponse) res).setStatus(201);
+            res.setContentType("application/json");
+            res.getWriter().write("[{\"status\":\"CREATED\"}]");
+        };
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(writer.events).hasSize(2);
+        HttpLogEvent responseEvent = writer.events.get(1);
+        assertThat(responseEvent.getFields()).containsEntry("response_status", 201);
+        assertThat(responseEvent.getFields().get("request_payload")).isEqualTo("{\"order_id\":\"1001\"}");
+        assertThat(responseEvent.getFields().get("response_payload")).isEqualTo("[{\"status\":\"CREATED\"}]");
+    }
+
+    @Test
+    void omitsBinaryPayloads() throws Exception {
         HttpLoggingFilter filter = filter();
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/upload");
         request.addHeader("X-Request-ID", "binary");

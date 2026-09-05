@@ -6,6 +6,7 @@ import com.anil.logging.masking.SensitiveDataMasker;
 import com.anil.logging.model.LogEvent;
 import com.anil.logging.model.LogFormat;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.MDC;
 
@@ -60,7 +61,10 @@ public class DefaultLogEventFormatter implements LogEventFormatter {
             map.put("thread", Thread.currentThread().getName());
         }
         map.put("message", masker.maskPayload(event.getMessage()));
-        event.getFields().forEach((key, value) -> map.put(toSnakeCase(key), masker.maskValue(key, value)));
+        event.getFields().forEach((key, value) -> {
+            String fieldName = toSnakeCase(key);
+            map.put(fieldName, jsonPayloadValue(fieldName, masker.maskValue(fieldName, value)));
+        });
         if (event.getThrowable() != null) {
             map.put("exception", exceptionMap(event.getThrowable()));
         }
@@ -83,6 +87,25 @@ public class DefaultLogEventFormatter implements LogEventFormatter {
         exception.put("message", masker.maskPayload(truncate(throwable.getMessage(), 2_000)));
         exception.put("stack_trace", stackTrace(throwable));
         return exception;
+    }
+
+    private Object jsonPayloadValue(String fieldName, Object value) {
+        if (!isPayloadField(fieldName) || !(value instanceof String text) || text.isBlank()) {
+            return value;
+        }
+        try {
+            JsonNode node = objectMapper.readTree(text);
+            if (node.isObject() || node.isArray()) {
+                return node;
+            }
+        } catch (RuntimeException | JsonProcessingException ignored) {
+            return value;
+        }
+        return value;
+    }
+
+    private static boolean isPayloadField(String fieldName) {
+        return "request_payload".equals(fieldName) || "response_payload".equals(fieldName);
     }
 
     private static String truncate(String value, int max) {

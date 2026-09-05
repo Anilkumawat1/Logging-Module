@@ -19,7 +19,6 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.MDC;
-import org.springframework.http.HttpHeaders;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.servlet.HandlerMapping;
 import org.springframework.web.util.ContentCachingRequestWrapper;
@@ -92,7 +91,7 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
         LoggingContextSnapshot previous = contextManager.capture();
         long start = System.nanoTime();
         Throwable failure = null;
-        ContentCachingRequestWrapper requestWrapper = new ContentCachingRequestWrapper(request, properties.getPayload().getRequestMaxSize());
+        HttpServletRequest requestWrapper = wrapRequestForLogging(request);
         ContentCachingResponseWrapper responseWrapper = new ContentCachingResponseWrapper(response);
         installMdc(requestWrapper);
         try {
@@ -137,7 +136,22 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
         }
     }
 
-    private void writeRequestEvent(ContentCachingRequestWrapper request) {
+    private HttpServletRequest wrapRequestForLogging(HttpServletRequest request) throws IOException {
+        if (!shouldCacheRequestPayloadForRequestLog(request)) {
+            return new ContentCachingRequestWrapper(request, properties.getPayload().getRequestMaxSize());
+        }
+        return new CachedBodyHttpServletRequest(request);
+    }
+
+    private boolean shouldCacheRequestPayloadForRequestLog(HttpServletRequest request) {
+        long contentLength = request.getContentLengthLong();
+        return properties.getInclude().isRequestPayload()
+                && contentCanBeLogged(request.getContentType())
+                && contentLength > 0
+                && contentLength <= properties.getPayload().getRequestMaxSize();
+    }
+
+    private void writeRequestEvent(HttpServletRequest request) {
         UserIdentity identity = safeUser().orElse(UserIdentity.anonymous());
         HttpLogEvent event = baseHttpEvent(request, identity);
         event.setType(LogCategory.HTTP_REQUEST);
@@ -149,10 +163,13 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
         if (properties.getInclude().isRequestParameters()) {
             event.requestParameters(masker.maskMap(parameters(request), MaskingTarget.QUERY_PARAMETER));
         }
+        if (shouldLogRequestPayload(request)) {
+            event.requestPayload(payload(requestPayloadBytes(request), request.getCharacterEncoding(), properties.getPayload().getRequestMaxSize()));
+        }
         httpLogWriter.write(event);
     }
 
-    private void writeResponseEvent(ContentCachingRequestWrapper request, ContentCachingResponseWrapper response,
+    private void writeResponseEvent(HttpServletRequest request, ContentCachingResponseWrapper response,
                                     long start, Throwable failure) {
         int status = response.getStatus();
         UserIdentity identity = safeUser().orElse(UserIdentity.anonymous());
@@ -166,16 +183,13 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
         if (properties.getInclude().isResponseHeaders()) {
             event.responseHeaders(masker.maskMap(responseHeaders(response), MaskingTarget.HEADER));
         }
-        if (shouldLogRequestPayload(request, status)) {
-            event.requestPayload(payload(request.getContentAsByteArray(), request.getCharacterEncoding(), properties.getPayload().getRequestMaxSize()));
-        }
         if (shouldLogResponsePayload(response)) {
             event.responsePayload(payload(response.getContentAsByteArray(), response.getCharacterEncoding(), properties.getPayload().getResponseMaxSize()));
         }
         httpLogWriter.write(event);
     }
 
-    private HttpLogEvent baseHttpEvent(ContentCachingRequestWrapper request, UserIdentity identity) {
+    private HttpLogEvent baseHttpEvent(HttpServletRequest request, UserIdentity identity) {
         HttpLogEvent event = new HttpLogEvent();
         event.requestId(MDC.get(MdcKeys.REQUEST_ID))
                 .traceId(MDC.get(MdcKeys.TRACE_ID))
@@ -200,10 +214,19 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
         return event;
     }
 
-    private boolean shouldLogRequestPayload(HttpServletRequest request, int status) {
+    private boolean shouldLogRequestPayload(HttpServletRequest request) {
         return properties.getInclude().isRequestPayload()
-                && statusInConfiguredRange(status)
                 && contentCanBeLogged(request.getContentType());
+    }
+
+    private byte[] requestPayloadBytes(HttpServletRequest request) {
+        if (request instanceof CachedBodyHttpServletRequest cached) {
+            return cached.getCachedBody();
+        }
+        if (request instanceof ContentCachingRequestWrapper cached) {
+            return cached.getContentAsByteArray();
+        }
+        return new byte[0];
     }
 
     private boolean shouldLogResponsePayload(ContentCachingResponseWrapper response) {
@@ -213,22 +236,6 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
     private boolean contentCanBeLogged(String contentType) {
         return properties.getPayload().isLogBinary()
                 || !LoggingProperties.contentTypeMatches(contentType, properties.getExcluded().getContentTypes());
-    }
-
-    private boolean statusInConfiguredRange(int status) {
-        for (String range : properties.getRequestPayload().getOnStatusRanges()) {
-            String[] parts = range.split("-", 2);
-            try {
-                int start = Integer.parseInt(parts[0].trim());
-                int end = parts.length == 1 ? start : Integer.parseInt(parts[1].trim());
-                if (status >= start && status <= end) {
-                    return true;
-                }
-            } catch (NumberFormatException ignored) {
-                return false;
-            }
-        }
-        return false;
     }
 
     private String payload(byte[] bytes, String encoding, int maxSize) {

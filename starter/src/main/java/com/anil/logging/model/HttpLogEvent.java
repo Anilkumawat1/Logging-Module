@@ -67,11 +67,11 @@ public class HttpLogEvent extends LogEvent {
         return fieldTyped("request_parameters", value);
     }
 
-    public HttpLogEvent requestPayload(String value) {
+    public HttpLogEvent requestPayload(Object value) {
         return fieldTyped("request_payload", value);
     }
 
-    public HttpLogEvent responsePayload(String value) {
+    public HttpLogEvent responsePayload(Object value) {
         return fieldTyped("response_payload", value);
     }
 
