@@ -60,6 +60,9 @@ public class DefaultLogEventFormatter implements LogEventFormatter {
         if (properties.getInclude().isThread()) {
             map.put("thread", Thread.currentThread().getName());
         }
+        if (properties.getInclude().isCaller()) {
+            putCaller(map);
+        }
         map.put("message", masker.maskPayload(event.getMessage()));
         event.getFields().forEach((key, value) -> {
             String fieldName = toSnakeCase(key);
@@ -78,6 +81,25 @@ public class DefaultLogEventFormatter implements LogEventFormatter {
     private static void putIfEnabled(Map<String, Object> map, String key, Object value, boolean enabled) {
         if (enabled && value != null) {
             map.putIfAbsent(key, value);
+        }
+    }
+
+    private void putCaller(Map<String, Object> map) {
+        StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
+        // Skip Thread.getStackTrace() and the logging framework itself
+        for (int i = 2; i < stackTrace.length; i++) {
+            StackTraceElement element = stackTrace[i];
+            String className = element.getClassName();
+            if (!className.startsWith("com.anil.logging.logging.") &&
+                !className.startsWith("com.anil.logging.filter.") &&
+                !className.startsWith("java.lang.Thread")) {
+                map.put("caller_class", className);
+                map.put("caller_method", element.getMethodName());
+                if (element.getLineNumber() > 0) {
+                    map.put("caller_line", element.getLineNumber());
+                }
+                break;
+            }
         }
     }
 

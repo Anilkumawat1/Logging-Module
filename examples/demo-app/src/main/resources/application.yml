@@ -15,3 +15,10 @@ app:
     operations:
       mappings:
         "POST /api/orders": CREATE_ORDER
+    payload:
+      request-max-size: 10000
+      response-max-size: 10000
+      log-binary: false
+    request-payload:
+      on-status-ranges:
+        - "200-599"

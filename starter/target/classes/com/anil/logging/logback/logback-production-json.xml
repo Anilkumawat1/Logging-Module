@@ -8,19 +8,32 @@
     <appender name="PRODUCTION_JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
             <providers>
+                <!-- Core fields in consistent order matching structured HTTP/BUSINESS events -->
                 <timestamp>
                     <fieldName>timestamp</fieldName>
                 </timestamp>
                 <logLevel>
                     <fieldName>level</fieldName>
                 </logLevel>
+                <!-- type, service, environment, request_id from MDC — appear before logger so
+                     field order matches the structured log events emitted by HttpLoggingFilter -->
+                <mdc>
+                    <includeMdcKeyName>type</includeMdcKeyName>
+                    <includeMdcKeyName>service</includeMdcKeyName>
+                    <includeMdcKeyName>environment</includeMdcKeyName>
+                    <includeMdcKeyName>request_id</includeMdcKeyName>
+                    <includeMdcKeyName>trace_id</includeMdcKeyName>
+                    <includeMdcKeyName>span_id</includeMdcKeyName>
+                    <includeMdcKeyName>user_id</includeMdcKeyName>
+                    <includeMdcKeyName>role_ids</includeMdcKeyName>
+                    <includeMdcKeyName>authenticated</includeMdcKeyName>
+                </mdc>
                 <loggerName>
                     <fieldName>logger</fieldName>
                 </loggerName>
                 <threadName>
                     <fieldName>thread</fieldName>
                 </threadName>
-                <mdc/>
                 <message/>
                 <stackTrace>
                     <fieldName>stack_trace</fieldName>
