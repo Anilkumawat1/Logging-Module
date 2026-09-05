@@ -125,7 +125,11 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
         MDC.put(MdcKeys.REQUEST_ID, requestId);
         MDC.put(MdcKeys.SERVICE, serviceName);
         MDC.put(MdcKeys.ENVIRONMENT, environment);
-        MDC.put(MdcKeys.TYPE, LogCategory.APPLICATION.name());
+        // Note: type is NOT set in MDC for regular application logs.
+        // - APPLICATION is the default/implicit type for any log.info() call — adding it
+        //   to every line is noise with zero signal. The 'logger' field already classifies the source.
+        // - HTTP_REQUEST / HTTP_RESPONSE are set via the event model in writeRequestEvent/writeResponseEvent.
+        // - BUSINESS / AUDIT / SECURITY etc. are set explicitly by LoggingService when those events are logged.
         TraceContext trace = resolveTrace(request);
         if (trace.traceId() != null) {
             MDC.put(MdcKeys.TRACE_ID, trace.traceId());
@@ -164,6 +168,9 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
         HttpLogEvent event = baseHttpEvent(request, identity);
         event.setType(LogCategory.HTTP_REQUEST);
         event.setLevel(properties.getLevels().getSuccess());
+        // Operation is intentionally omitted on the request event: the DispatcherServlet
+        // hasn't run yet, so HandlerMapping attributes and @LogOperation are not set.
+        // Operation is resolved accurately only on the response event.
         event.setMessage("HTTP request " + request.getMethod() + " " + endpoint(request));
         if (properties.getInclude().isRequestHeaders()) {
             event.requestHeaders(masker.maskMap(headers(request), MaskingTarget.HEADER));
@@ -171,6 +178,8 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
         if (properties.getInclude().isRequestParameters()) {
             event.requestParameters(masker.maskMap(parameters(request), MaskingTarget.QUERY_PARAMETER));
         }
+        // Print request payload in the request event unconditionally (if globally enabled).
+        // It will ALSO be printed in the response event conditionally based on on-status-ranges.
         if (shouldLogRequestPayload(request) && snapshotedPayload != null && snapshotedPayload.length > 0) {
             event.requestPayload(payload(snapshotedPayload, request.getCharacterEncoding(), properties.getPayload().getRequestMaxSize()));
         }
@@ -184,16 +193,26 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
         HttpLogEvent event = baseHttpEvent(request, identity);
         event.setType(LogCategory.HTTP_RESPONSE);
         event.setLevel(levelFor(status, failure));
-        event.setMessage("HTTP response " + request.getMethod() + " " + endpoint(request) + " " + status);
+        // Message carries status code so a quick grep on logs shows success/error at a glance.
+        // method, endpoint, and operation are already structured fields below.
+        event.setMessage("HTTP response " + status + " " + request.getMethod() + " " + endpoint(request));
         event.setThrowable(failure);
         event.responseStatus(status)
                 .responseTimeMs((System.nanoTime() - start) / 1_000_000);
+        // Operation is resolved here (after the chain) where both HandlerMapping attributes
+        // and @LogOperation annotation attributes are fully populated.
+        if (properties.getInclude().isOperation()) {
+            event.operation(safeOperation(request));
+        }
         if (properties.getInclude().isResponseHeaders()) {
             event.responseHeaders(masker.maskMap(responseHeaders(response), MaskingTarget.HEADER));
         }
-        // Include the request payload on the response event so a single response log line
-        // contains the full round-trip context (request body + response body + timing).
-        if (shouldLogRequestPayload(request) && snapshotedRequestPayload != null && snapshotedRequestPayload.length > 0) {
+        // Include the request payload on the response event only when the status falls
+        // within the configured on-status-ranges (default 100-599 = always).
+        // This lets you say "only capture request body on errors (400-599)" without
+        // logging it on every successful request.
+        if (shouldLogRequestPayloadForResponse(request, status)
+                && snapshotedRequestPayload != null && snapshotedRequestPayload.length > 0) {
             event.requestPayload(payload(snapshotedRequestPayload, request.getCharacterEncoding(), properties.getPayload().getRequestMaxSize()));
         }
         if (shouldLogResponsePayload(response)) {
@@ -202,14 +221,19 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
         httpLogWriter.write(event);
     }
 
+    /**
+     * Builds the common fields shared by both request and response log events.
+     * Note: {@code operation} is intentionally NOT set here — it must be resolved
+     * post-chain (in {@link #writeResponseEvent}) where Spring MVC handler-mapping
+     * attributes and {@code @LogOperation} have been populated.
+     */
     private HttpLogEvent baseHttpEvent(HttpServletRequest request, UserIdentity identity) {
         HttpLogEvent event = new HttpLogEvent();
         event.requestId(MDC.get(MdcKeys.REQUEST_ID))
                 .traceId(MDC.get(MdcKeys.TRACE_ID))
                 .spanId(MDC.get(MdcKeys.SPAN_ID))
                 .method(request.getMethod())
-                .endpoint(endpoint(request))
-                .operation(properties.getInclude().isOperation() ? safeOperation(request) : null);
+                .endpoint(endpoint(request));
         if (properties.getInclude().isUser()) {
             event.authenticated(identity.authenticated());
             // Only include userId and roles for authenticated users — avoids logging
@@ -236,6 +260,49 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
     private boolean shouldLogRequestPayload(HttpServletRequest request) {
         return properties.getInclude().isRequestPayload()
                 && contentCanBeLogged(request.getContentType());
+    }
+
+    /**
+     * Whether to include the request payload in the <em>response</em> log event.
+     * <p>
+     * This adds the {@code request-payload.on-status-ranges} gate on top of the
+     * base content-type / enabled check. Example config:
+     * <pre>
+     * app.logging.request-payload.on-status-ranges:
+     *   - "400-599"   # only log request body when something went wrong
+     * </pre>
+     * Default range is {@code 100-599} (always log, preserving existing behaviour).
+     */
+    private boolean shouldLogRequestPayloadForResponse(HttpServletRequest request, int status) {
+        if (!shouldLogRequestPayload(request)) {
+            return false;
+        }
+        List<String> ranges = properties.getRequestPayload().getOnStatusRanges();
+        if (ranges == null || ranges.isEmpty()) {
+            return true;
+        }
+        return isStatusInAnyRange(status, ranges);
+    }
+
+    private static boolean isStatusInAnyRange(int status, List<String> ranges) {
+        for (String range : ranges) {
+            if (range == null) continue;
+            String trimmed = range.trim();
+            int dash = trimmed.indexOf('-');
+            try {
+                if (dash < 0) {
+                    // Single exact status, e.g. "422"
+                    if (status == Integer.parseInt(trimmed)) return true;
+                } else {
+                    int low  = Integer.parseInt(trimmed.substring(0, dash).trim());
+                    int high = Integer.parseInt(trimmed.substring(dash + 1).trim());
+                    if (status >= low && status <= high) return true;
+                }
+            } catch (NumberFormatException ignored) {
+                // Malformed range entry — skip silently, don't blow up request logging
+            }
+        }
+        return false;
     }
 
     /**

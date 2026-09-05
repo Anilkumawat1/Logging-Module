@@ -85,13 +85,16 @@ class HttpLoggingFilterTest {
         assertThat(requestEvent.getFields()).containsEntry("request_id", "abc123")
                 .containsEntry("method", "POST")
                 .containsEntry("endpoint", "/api/orders")
-                .containsEntry("operation", "CREATE_ORDER");
+                // operation is intentionally absent from the request event: it is only
+                // available after the DispatcherServlet processes the request (response event).
+                .doesNotContainKey("operation");
         assertThat((Map<String, Object>) requestEvent.getFields().get("request_headers")).containsEntry("Authorization", "***");
         assertThat((Map<String, Object>) requestEvent.getFields().get("request_headers")).containsEntry("postman-token", "***");
         assertThat((Map<String, Object>) requestEvent.getFields().get("request_parameters")).containsEntry("token", "***");
 
         assertThat(responseEvent.getType()).isEqualTo(LogCategory.HTTP_RESPONSE);
-        assertThat(responseEvent.getMessage()).isEqualTo("HTTP response POST /api/orders 422");
+        // Status code is now first in the message for easier grep: 'HTTP response 422 POST /api/orders'
+        assertThat(responseEvent.getMessage()).isEqualTo("HTTP response 422 POST /api/orders");
         assertThat(responseEvent.getFields()).containsEntry("request_id", "abc123")
                 .containsEntry("trace_id", "4bf92f3577b34da6a3ce929d0e0e4736")
                 .containsEntry("span_id", "00f067aa0ba902b7")
@@ -149,6 +152,65 @@ class HttpLoggingFilterTest {
 
         assertThat(writer.events).hasSize(2);
         assertThat(writer.events.get(1).getFields()).doesNotContainKeys("request_payload", "response_payload");
+    }
+
+    @Test
+    void requestPayloadOmittedFromResponseEventWhenStatusNotInConfiguredRange() throws Exception {
+        // on-status-ranges: 400-599  →  should NOT appear for a 200 response
+        properties.getRequestPayload().setOnStatusRanges(List.of("400-599"));
+        HttpLoggingFilter filter = filter();
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/orders");
+        request.setContentType("application/json");
+        request.setContent("{\"amount\":2}".getBytes(StandardCharsets.UTF_8));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = (req, res) -> {
+            req.getInputStream().readAllBytes();
+            ((HttpServletResponse) res).setStatus(200);
+        };
+
+        filter.doFilter(request, response, chain);
+
+        HttpLogEvent responseEvent = writer.events.get(1);
+        assertThat(responseEvent.getFields()).doesNotContainKey("request_payload");
+    }
+
+    @Test
+    void requestPayloadIncludedInResponseEventWhenStatusIsInConfiguredRange() throws Exception {
+        // on-status-ranges: 400-599  →  SHOULD appear for a 422 response
+        properties.getRequestPayload().setOnStatusRanges(List.of("400-599"));
+        HttpLoggingFilter filter = filter();
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/orders");
+        request.setContentType("application/json");
+        request.setContent("{\"amount\":2}".getBytes(StandardCharsets.UTF_8));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = (req, res) -> {
+            req.getInputStream().readAllBytes();
+            ((HttpServletResponse) res).setStatus(422);
+        };
+
+        filter.doFilter(request, response, chain);
+
+        HttpLogEvent responseEvent = writer.events.get(1);
+        assertThat(responseEvent.getFields().get("request_payload")).isEqualTo("{\"amount\":2}");
+    }
+
+    @Test
+    void requestPayloadAlwaysIncludedWhenDefaultRangeIsUsed() throws Exception {
+        // Default on-status-ranges is "100-599" (everything) — payload appears on any status
+        HttpLoggingFilter filter = filter();
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/orders");
+        request.setContentType("application/json");
+        request.setContent("{\"amount\":5}".getBytes(StandardCharsets.UTF_8));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = (req, res) -> {
+            req.getInputStream().readAllBytes();
+            ((HttpServletResponse) res).setStatus(201);
+        };
+
+        filter.doFilter(request, response, chain);
+
+        HttpLogEvent responseEvent = writer.events.get(1);
+        assertThat(responseEvent.getFields().get("request_payload")).isEqualTo("{\"amount\":5}");
     }
 
     @Test
