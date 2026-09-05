@@ -12,6 +12,7 @@
 /Users/anilkumawat/Desktop/logging/starter/src/main/java/com/anil/logging/context/LoggingContextSnapshot.java
 /Users/anilkumawat/Desktop/logging/starter/src/main/java/com/anil/logging/context/MdcKeys.java
 /Users/anilkumawat/Desktop/logging/starter/src/main/java/com/anil/logging/context/MdcLoggingContextManager.java
+/Users/anilkumawat/Desktop/logging/starter/src/main/java/com/anil/logging/filter/CachedBodyHttpServletRequest.java
 /Users/anilkumawat/Desktop/logging/starter/src/main/java/com/anil/logging/filter/ClientIpResolver.java
 /Users/anilkumawat/Desktop/logging/starter/src/main/java/com/anil/logging/filter/DefaultClientIpResolver.java
 /Users/anilkumawat/Desktop/logging/starter/src/main/java/com/anil/logging/filter/HttpLoggingFilter.java

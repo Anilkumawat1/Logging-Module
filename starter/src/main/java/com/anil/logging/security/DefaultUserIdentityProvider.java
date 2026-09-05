@@ -1,6 +1,7 @@
 package com.anil.logging.security;
 
 import com.anil.logging.config.LoggingProperties;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -26,6 +27,11 @@ public class DefaultUserIdentityProvider implements UserIdentityProvider {
         try {
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
             if (authentication == null || !authentication.isAuthenticated()) {
+                return Optional.of(UserIdentity.anonymous());
+            }
+            // AnonymousAuthenticationToken.isAuthenticated() returns true, but the
+            // request is effectively unauthenticated — treat it as anonymous.
+            if (authentication instanceof AnonymousAuthenticationToken) {
                 return Optional.of(UserIdentity.anonymous());
             }
             Map<String, Object> claims = claims(authentication);

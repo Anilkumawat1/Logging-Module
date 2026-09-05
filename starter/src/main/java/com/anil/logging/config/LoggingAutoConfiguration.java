@@ -101,14 +101,14 @@ public class LoggingAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnMissingBean
     @ConditionalOnClass(Authentication.class)
+    @ConditionalOnMissingBean(UserIdentityProvider.class)
     UserIdentityProvider springSecurityUserIdentityProvider(LoggingProperties properties) {
         return new DefaultUserIdentityProvider(properties);
     }
 
     @Bean
-    @ConditionalOnMissingBean
+    @ConditionalOnMissingBean({UserIdentityProvider.class, Authentication.class})
     UserIdentityProvider anonymousUserIdentityProvider() {
         return new AnonymousUserIdentityProvider();
     }
