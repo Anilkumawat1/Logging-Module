@@ -332,7 +332,7 @@ public class LoggingProperties {
     }
 
     public static class RequestPayload {
-        private List<String> onStatusRanges = new ArrayList<>(List.of("400-599"));
+        private List<String> onStatusRanges = new ArrayList<>(List.of("100-599"));
 
         public List<String> getOnStatusRanges() {
             return onStatusRanges;

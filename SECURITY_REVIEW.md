@@ -10,7 +10,7 @@ This starter is designed to make useful production logs without turning logs int
 - Invalid JSON is handled through safe text masking instead of failing the request.
 - Binary, multipart, PDF, image, video, and audio payloads are excluded by default.
 - Payload capture is bounded by configurable request/response byte limits.
-- HTTP request payload logging defaults to `400-599` responses.
+- HTTP request payload logging defaults to `100-599` responses and can be narrowed to `400-599` for error-only body logging.
 - Logging failures are caught and do not fail the application request.
 - MDC propagation uses an allowlist and a denylist. Sensitive names are not propagated even if someone puts them in MDC.
 

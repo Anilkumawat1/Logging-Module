@@ -86,7 +86,7 @@ app:
       log-binary: false
     request-payload:
       on-status-ranges:
-        - "400-599"
+        - "100-599"
     masking:
       enabled: true
       replacement: "***"
@@ -164,7 +164,16 @@ HTTP events can include:
 - bounded request/response payloads
 - status and duration in milliseconds
 
-Request payloads are omitted for successful responses by default and included for `400-599`, subject to masking and size limits.
+Request payloads are included after the request body has been read by Spring MVC. By default this applies to `100-599`, subject to masking, binary checks, and size limits. Set `request-payload.on-status-ranges` to values like `400-599` if you only want request bodies on errors.
+
+JSON request and response payloads are emitted as real JSON objects/arrays in the log event:
+
+```json
+{
+  "request_payload": {"order_id": "1001"},
+  "response_payload": [{"status": "CREATED"}]
+}
+```
 
 Binary and large body protections are enabled by default. Multipart, octet-stream, PDF, image, video, and audio content are not logged unless `app.logging.payload.log-binary=true`.
 
@@ -361,7 +370,7 @@ Endpoints:
 ## Troubleshooting
 
 - Missing `request_id` in child threads: verify the task uses `LoggingTaskDecorator`, `LoggingExecutors.wrap(...)`, or an explicitly wrapped `Runnable`/`Callable`.
-- Missing JSON fields in normal SLF4J logs: verify Logback includes MDC or the provided JSON/text include.
+- Missing JSON fields in normal SLF4J logs: verify Logback includes MDC or the provided JSON include.
 - Raw secrets in logs: add the field/header/query name to `app.logging.masking.*` and keep payload logging bounded.
 - Proxy IP concerns: only trust forwarded IP headers from trusted proxies/load balancers. Otherwise use `request.getRemoteAddr()`.
 - Caller class/method: prefer logger name. Stack inspection is intentionally not enabled by default because it adds cost to every log.
