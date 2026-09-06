@@ -9,79 +9,79 @@
       "name": "app.logging.async",
       "type": "com.anil.logging.config.LoggingProperties$Async",
       "sourceType": "com.anil.logging.config.LoggingProperties",
-      "sourceMethod": "public com.anil.logging.config.LoggingProperties.Async getAsync() "
+      "sourceMethod": "getAsync()"
     },
     {
       "name": "app.logging.context",
       "type": "com.anil.logging.config.LoggingProperties$Context",
       "sourceType": "com.anil.logging.config.LoggingProperties",
-      "sourceMethod": "public com.anil.logging.config.LoggingProperties.Context getContext() "
+      "sourceMethod": "getContext()"
     },
     {
       "name": "app.logging.context.fields",
       "type": "com.anil.logging.config.LoggingProperties$Fields",
       "sourceType": "com.anil.logging.config.LoggingProperties$Context",
-      "sourceMethod": "public com.anil.logging.config.LoggingProperties.Fields getFields() "
+      "sourceMethod": "getFields()"
     },
     {
       "name": "app.logging.context.propagation",
       "type": "com.anil.logging.config.LoggingProperties$Propagation",
       "sourceType": "com.anil.logging.config.LoggingProperties$Context",
-      "sourceMethod": "public com.anil.logging.config.LoggingProperties.Propagation getPropagation() "
+      "sourceMethod": "getPropagation()"
     },
     {
       "name": "app.logging.excluded",
       "type": "com.anil.logging.config.LoggingProperties$Excluded",
       "sourceType": "com.anil.logging.config.LoggingProperties",
-      "sourceMethod": "public com.anil.logging.config.LoggingProperties.Excluded getExcluded() "
+      "sourceMethod": "getExcluded()"
     },
     {
       "name": "app.logging.identity",
       "type": "com.anil.logging.config.LoggingProperties$Identity",
       "sourceType": "com.anil.logging.config.LoggingProperties",
-      "sourceMethod": "public com.anil.logging.config.LoggingProperties.Identity getIdentity() "
+      "sourceMethod": "getIdentity()"
     },
     {
       "name": "app.logging.include",
       "type": "com.anil.logging.config.LoggingProperties$Include",
       "sourceType": "com.anil.logging.config.LoggingProperties",
-      "sourceMethod": "public com.anil.logging.config.LoggingProperties.Include getInclude() "
+      "sourceMethod": "getInclude()"
     },
     {
       "name": "app.logging.ip",
       "type": "com.anil.logging.config.LoggingProperties$Ip",
       "sourceType": "com.anil.logging.config.LoggingProperties",
-      "sourceMethod": "public com.anil.logging.config.LoggingProperties.Ip getIp() "
+      "sourceMethod": "getIp()"
     },
     {
       "name": "app.logging.levels",
       "type": "com.anil.logging.config.LoggingProperties$Levels",
       "sourceType": "com.anil.logging.config.LoggingProperties",
-      "sourceMethod": "public com.anil.logging.config.LoggingProperties.Levels getLevels() "
+      "sourceMethod": "getLevels()"
     },
     {
       "name": "app.logging.masking",
       "type": "com.anil.logging.config.LoggingProperties$Masking",
       "sourceType": "com.anil.logging.config.LoggingProperties",
-      "sourceMethod": "public com.anil.logging.config.LoggingProperties.Masking getMasking() "
+      "sourceMethod": "getMasking()"
     },
     {
       "name": "app.logging.operations",
       "type": "com.anil.logging.config.LoggingProperties$Operations",
       "sourceType": "com.anil.logging.config.LoggingProperties",
-      "sourceMethod": "public com.anil.logging.config.LoggingProperties.Operations getOperations() "
+      "sourceMethod": "getOperations()"
     },
     {
       "name": "app.logging.payload",
       "type": "com.anil.logging.config.LoggingProperties$Payload",
       "sourceType": "com.anil.logging.config.LoggingProperties",
-      "sourceMethod": "public com.anil.logging.config.LoggingProperties.Payload getPayload() "
+      "sourceMethod": "getPayload()"
     },
     {
       "name": "app.logging.request-payload",
       "type": "com.anil.logging.config.LoggingProperties$RequestPayload",
       "sourceType": "com.anil.logging.config.LoggingProperties",
-      "sourceMethod": "public com.anil.logging.config.LoggingProperties.RequestPayload getRequestPayload() "
+      "sourceMethod": "getRequestPayload()"
     }
   ],
   "properties": [
