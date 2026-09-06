@@ -22,12 +22,15 @@ public class AsyncLoggingAutoConfiguration {
         return new LoggingTaskDecorator(contextManager);
     }
 
-    @Bean
-    @ConditionalOnBean(LoggingTaskDecorator.class)
-    @ConditionalOnClass(TaskExecutorCustomizer.class)
-    @ConditionalOnProperty(prefix = "app.logging.async", name = "executor-integration", havingValue = "true", matchIfMissing = true)
-    TaskExecutorCustomizer loggingTaskExecutorCustomizer(LoggingTaskDecorator decorator) {
-        return executor -> executor.setTaskDecorator(decorator);
-    }
+    @org.springframework.context.annotation.Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(name = "org.springframework.boot.task.TaskExecutorCustomizer")
+    static class TaskExecutorCustomizerConfiguration {
 
+        @Bean
+        @ConditionalOnBean(LoggingTaskDecorator.class)
+        @ConditionalOnProperty(prefix = "app.logging.async", name = "executor-integration", havingValue = "true", matchIfMissing = true)
+        TaskExecutorCustomizer loggingTaskExecutorCustomizer(LoggingTaskDecorator decorator) {
+            return executor -> executor.setTaskDecorator(decorator);
+        }
+    }
 }

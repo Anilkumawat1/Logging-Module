@@ -56,13 +56,6 @@ public class LoggingAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(prefix = "app.logging.async", name = {"enabled", "task-decorator"}, havingValue = "true", matchIfMissing = true)
-    com.anil.logging.async.LoggingTaskDecorator loggingTaskDecorator(LoggingContextManager contextManager) {
-        return new com.anil.logging.async.LoggingTaskDecorator(contextManager);
-    }
-
-    @Bean
-    @ConditionalOnMissingBean
     SensitiveDataMasker sensitiveDataMasker(LoggingProperties properties, ObjectMapper objectMapper) {
         return new JsonSensitiveDataMasker(properties, objectMapper);
     }

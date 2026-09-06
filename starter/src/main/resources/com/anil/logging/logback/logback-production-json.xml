@@ -1,4 +1,4 @@
-<included>
+<configuration>
     <appender name="PRODUCTION_RAW_JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
             <pattern>%msg%n</pattern>
@@ -53,4 +53,4 @@
     <root level="INFO">
         <appender-ref ref="PRODUCTION_JSON_CONSOLE"/>
     </root>
-</included>
+</configuration>

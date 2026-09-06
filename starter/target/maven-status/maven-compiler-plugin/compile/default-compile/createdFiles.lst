@@ -18,6 +18,7 @@ com/anil/logging/context/MdcLoggingContextManager.class
 com/anil/logging/context/LoggingContextSnapshot.class
 com/anil/logging/logging/LogEventFormatter.class
 com/anil/logging/logging/FluentLogEvent.class
+com/anil/logging/filter/CachedBodyHttpServletRequest.class
 com/anil/logging/logging/TimerContext.class
 com/anil/logging/config/AsyncLoggingAutoConfiguration.class
 com/anil/logging/config/LoggingProperties$Fields.class
@@ -50,9 +51,11 @@ com/anil/logging/logging/DefaultLoggingService$DefaultFluentLogEvent.class
 com/anil/logging/filter/HttpLoggingFilter.class
 com/anil/logging/config/LoggingProperties.class
 com/anil/logging/config/LoggingProperties$Operations.class
+com/anil/logging/filter/CachedBodyHttpServletRequest$1.class
 com/anil/logging/operation/LogOperation.class
 com/anil/logging/context/LoggingContextScope.class
 com/anil/logging/async/ContextAwareScheduledExecutorService.class
+com/anil/logging/config/AsyncLoggingAutoConfiguration$TaskExecutorCustomizerConfiguration.class
 com/anil/logging/security/AnonymousUserIdentityProvider.class
 com/anil/logging/logging/DefaultLogEventFormatter.class
 com/anil/logging/logging/DefaultLoggingService.class
