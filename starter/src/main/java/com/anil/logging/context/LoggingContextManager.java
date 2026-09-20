@@ -6,21 +6,36 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface LoggingContextManager {
+    /** Capture the allowlisted context that is safe to propagate to another thread. */
     LoggingContextSnapshot capture();
 
+    /** Restore a propagation snapshot. */
     void restore(LoggingContextSnapshot context);
+
+    /**
+     * Capture every MDC entry for same-thread scope restoration. Implementations that do not
+     * distinguish raw and propagated state remain source-compatible through this default.
+     */
+    default LoggingContextSnapshot captureRaw() {
+        return capture();
+    }
+
+    /** Restore a raw same-thread snapshot without applying propagation filtering. */
+    default void restoreRaw(LoggingContextSnapshot context) {
+        restore(context);
+    }
 
     void clear();
 
     default Runnable wrap(Runnable runnable) {
         LoggingContextSnapshot snapshot = capture();
         return () -> {
-            LoggingContextSnapshot previous = capture();
+            LoggingContextSnapshot previous = captureRaw();
             try {
                 restore(snapshot);
                 runnable.run();
             } finally {
-                restore(previous);
+                restoreRaw(previous);
             }
         };
     }
@@ -28,12 +43,12 @@ public interface LoggingContextManager {
     default <T> Callable<T> wrap(Callable<T> callable) {
         LoggingContextSnapshot snapshot = capture();
         return () -> {
-            LoggingContextSnapshot previous = capture();
+            LoggingContextSnapshot previous = captureRaw();
             try {
                 restore(snapshot);
                 return callable.call();
             } finally {
-                restore(previous);
+                restoreRaw(previous);
             }
         };
     }
@@ -41,12 +56,12 @@ public interface LoggingContextManager {
     default <T> Supplier<T> wrap(Supplier<T> supplier) {
         LoggingContextSnapshot snapshot = capture();
         return () -> {
-            LoggingContextSnapshot previous = capture();
+            LoggingContextSnapshot previous = captureRaw();
             try {
                 restore(snapshot);
                 return supplier.get();
             } finally {
-                restore(previous);
+                restoreRaw(previous);
             }
         };
     }
@@ -54,12 +69,12 @@ public interface LoggingContextManager {
     default <T, R> Function<T, R> wrap(Function<T, R> function) {
         LoggingContextSnapshot snapshot = capture();
         return value -> {
-            LoggingContextSnapshot previous = capture();
+            LoggingContextSnapshot previous = captureRaw();
             try {
                 restore(snapshot);
                 return function.apply(value);
             } finally {
-                restore(previous);
+                restoreRaw(previous);
             }
         };
     }
@@ -67,12 +82,12 @@ public interface LoggingContextManager {
     default <T> Consumer<T> wrap(Consumer<T> consumer) {
         LoggingContextSnapshot snapshot = capture();
         return value -> {
-            LoggingContextSnapshot previous = capture();
+            LoggingContextSnapshot previous = captureRaw();
             try {
                 restore(snapshot);
                 consumer.accept(value);
             } finally {
-                restore(previous);
+                restoreRaw(previous);
             }
         };
     }

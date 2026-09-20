@@ -48,7 +48,7 @@ public class DefaultLoggingService implements LoggingService {
     }
 
     void log(String level, LogCategory category, String message, Map<String, ?> fields, Throwable throwable) {
-        if (!properties.categoryEnabled(category)) {
+        if (!properties.isEnabled() || !properties.categoryEnabled(category)) {
             return;
         }
         try {
@@ -57,7 +57,9 @@ public class DefaultLoggingService implements LoggingService {
             event.setType(category);
             event.setMessage(message);
             event.setThrowable(throwable);
-            event.field("logger", LOGGER.getName());
+            if (properties.getInclude().isLogger()) {
+                event.field("logger", LOGGER.getName());
+            }
             if (fields != null) {
                 fields.forEach(event::field);
             }

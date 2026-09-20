@@ -4,6 +4,7 @@ spring:
 
 app:
   logging:
+    enabled: true
     service-name: logging-demo
     environment: local
     format: json
@@ -11,7 +12,17 @@ app:
       request-headers: true
       response-headers: true
       request-parameters: true
-      response-payload: true
+      request-payload: true
+      response-payload: false
+      user: true
+      ip: true
+      domain: true
+      url: true
+      operation: true
+      trace: true
+      thread: true
+      logger: true
+      caller: false
     operations:
       mappings:
         "POST /api/orders": CREATE_ORDER
@@ -21,4 +32,11 @@ app:
       log-binary: false
     request-payload:
       on-status-ranges:
-        - "200-599"
+        - "400-599"
+    masking:
+      enabled: true
+      replacement: "***"
+    async:
+      enabled: true
+      task-decorator: true
+      executor-integration: true

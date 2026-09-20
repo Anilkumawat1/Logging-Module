@@ -6,11 +6,12 @@ This starter is designed to make useful production logs without turning logs int
 
 - Authorization, cookies, API keys, auth tokens, passwords, client secrets, private keys, card numbers, CVV, CVC, and OTP values are masked by default.
 - Header, query-parameter, and JSON field matching is case-insensitive.
-- JSON masking is recursive across nested objects and arrays.
+- Masking is recursive across JSON, maps, collections, arrays, exception messages, and stack traces.
 - Invalid JSON is handled through safe text masking instead of failing the request.
 - Binary, multipart, PDF, image, video, and audio payloads are excluded by default.
-- Payload capture is bounded by configurable request/response byte limits.
-- HTTP request payload logging defaults to `100-599` responses and can be narrowed to `400-599` for error-only body logging.
+- Payload capture is bounded by configurable request/response byte limits, and responses are not fully buffered.
+- Request payloads are written only on the final response event. They default to `100-599` and can be narrowed to `400-599` for error-only body logging.
+- URLs exclude the raw query string; query parameters are logged separately after masking.
 - Logging failures are caught and do not fail the application request.
 - MDC propagation uses an allowlist and a denylist. Sensitive names are not propagated even if someone puts them in MDC.
 

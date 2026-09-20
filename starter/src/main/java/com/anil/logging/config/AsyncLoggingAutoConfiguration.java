@@ -2,13 +2,14 @@ package com.anil.logging.config;
 
 import com.anil.logging.async.LoggingTaskDecorator;
 import com.anil.logging.context.LoggingContextManager;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.boot.task.TaskExecutorCustomizer;
+import org.springframework.boot.task.SimpleAsyncTaskExecutorCustomizer;
+import org.springframework.boot.task.ThreadPoolTaskExecutorCustomizer;
 import org.springframework.context.annotation.Bean;
 
 @AutoConfiguration(after = LoggingAutoConfiguration.class)
@@ -23,13 +24,27 @@ public class AsyncLoggingAutoConfiguration {
     }
 
     @org.springframework.context.annotation.Configuration(proxyBeanMethods = false)
-    @ConditionalOnClass(name = "org.springframework.boot.task.TaskExecutorCustomizer")
+    @ConditionalOnClass(name = "org.springframework.boot.task.ThreadPoolTaskExecutorCustomizer")
     static class TaskExecutorCustomizerConfiguration {
 
         @Bean
-        @ConditionalOnBean(LoggingTaskDecorator.class)
-        @ConditionalOnProperty(prefix = "app.logging.async", name = "executor-integration", havingValue = "true", matchIfMissing = true)
-        TaskExecutorCustomizer loggingTaskExecutorCustomizer(LoggingTaskDecorator decorator) {
+        @ConditionalOnProperty(prefix = "app.logging.async", name = {"task-decorator", "executor-integration"}, havingValue = "true", matchIfMissing = true)
+        ThreadPoolTaskExecutorCustomizer loggingThreadPoolTaskExecutorCustomizer(
+                ObjectProvider<LoggingTaskDecorator> decoratorProvider,
+                LoggingContextManager contextManager) {
+            LoggingTaskDecorator decorator = decoratorProvider.getIfAvailable(
+                    () -> new LoggingTaskDecorator(contextManager));
+            return executor -> executor.setTaskDecorator(decorator);
+        }
+
+        @Bean
+        @ConditionalOnClass(SimpleAsyncTaskExecutorCustomizer.class)
+        @ConditionalOnProperty(prefix = "app.logging.async", name = {"task-decorator", "executor-integration"}, havingValue = "true", matchIfMissing = true)
+        SimpleAsyncTaskExecutorCustomizer loggingSimpleAsyncTaskExecutorCustomizer(
+                ObjectProvider<LoggingTaskDecorator> decoratorProvider,
+                LoggingContextManager contextManager) {
+            LoggingTaskDecorator decorator = decoratorProvider.getIfAvailable(
+                    () -> new LoggingTaskDecorator(contextManager));
             return executor -> executor.setTaskDecorator(decorator);
         }
     }

@@ -44,12 +44,23 @@ public class MdcLoggingContextManager implements LoggingContextManager {
     }
 
     @Override
+    public LoggingContextSnapshot captureRaw() {
+        Map<String, String> contextMap = MDC.getCopyOfContextMap();
+        return new LoggingContextSnapshot(contextMap == null ? Map.of() : contextMap);
+    }
+
+    @Override
     public void restore(LoggingContextSnapshot context) {
         if (context == null || context.isEmpty()) {
             MDC.clear();
             return;
         }
         MDC.setContextMap(context.values());
+    }
+
+    @Override
+    public void restoreRaw(LoggingContextSnapshot context) {
+        restore(context);
     }
 
     @Override

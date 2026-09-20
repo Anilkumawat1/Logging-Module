@@ -109,4 +109,28 @@ class ContextPropagationTest {
         assertThat(value.get()).isEqualTo("safe:null");
         raw.shutdownNow();
     }
+
+    @Test
+    void rawSnapshotRestoresFieldsThatAreNotAllowedForThreadPropagation() {
+        MDC.put("upstream_library_field", "preserve");
+        var raw = contextManager.captureRaw();
+
+        MDC.clear();
+        contextManager.restoreRaw(raw);
+
+        assertThat(MDC.get("upstream_library_field")).isEqualTo("preserve");
+        assertThat(contextManager.capture().values()).doesNotContainKey("upstream_library_field");
+    }
+
+    @Test
+    void disablingPropagationDoesNotDisableRawScopeRestoration() {
+        properties.getContext().getPropagation().setEnabled(false);
+        MDC.put("upstream", "preserve");
+
+        var raw = contextManager.captureRaw();
+        var propagated = contextManager.capture();
+
+        assertThat(raw.values()).containsEntry("upstream", "preserve");
+        assertThat(propagated.isEmpty()).isTrue();
+    }
 }
