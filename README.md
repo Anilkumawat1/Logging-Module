@@ -17,7 +17,7 @@ The central guarantee is explicit:
 <dependency>
   <groupId>com.anil</groupId>
   <artifactId>spring-boot-production-logging-starter</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
+  <version>0.0.0.1</version>
 </dependency>
 ```
 
