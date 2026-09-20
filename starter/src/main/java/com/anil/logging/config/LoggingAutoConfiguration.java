@@ -28,10 +28,10 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.boot.autoconfigure.security.SecurityProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
-import org.springframework.core.Ordered;
 import org.springframework.core.env.Environment;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
@@ -76,8 +76,8 @@ public class LoggingAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    HttpLogWriter httpLogWriter(LogEventFormatter formatter) {
-        return new Slf4jHttpLogWriter(formatter);
+    HttpLogWriter httpLogWriter(LogEventFormatter formatter, LoggingProperties properties) {
+        return new Slf4jHttpLogWriter(formatter, properties);
     }
 
     @Bean
@@ -159,7 +159,9 @@ public class LoggingAutoConfiguration {
                 userIdentityProvider, traceContextProvider, operationResolver, httpLogWriter,
                 serviceName(properties, environment), environmentName(properties, environment));
         FilterRegistrationBean<HttpLoggingFilter> registration = new FilterRegistrationBean<>(filter);
-        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 20);
+        // Run downstream of Spring Security's DelegatingFilterProxy so authentication is
+        // available while the security chain is still active.
+        registration.setOrder(SecurityProperties.DEFAULT_FILTER_ORDER + 1);
         registration.setName("httpLoggingFilter");
         return registration;
     }

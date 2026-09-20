@@ -659,7 +659,10 @@ public class LoggingProperties {
         }
         String normalized = actual.toLowerCase(Locale.ROOT);
         for (String candidate : configured) {
-            String value = candidate == null ? "" : candidate.toLowerCase(Locale.ROOT);
+            String value = candidate == null ? "" : candidate.trim().toLowerCase(Locale.ROOT);
+            if (value.isEmpty()) {
+                continue;
+            }
             if (value.endsWith("/") && normalized.startsWith(value)) {
                 return true;
             }

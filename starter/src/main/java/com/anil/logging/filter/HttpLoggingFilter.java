@@ -15,6 +15,8 @@ import com.anil.logging.security.UserIdentityProvider;
 import com.anil.logging.trace.TraceContext;
 import com.anil.logging.trace.TraceContextProvider;
 import jakarta.servlet.FilterChain;
+import jakarta.servlet.AsyncEvent;
+import jakarta.servlet.AsyncListener;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -22,7 +24,6 @@ import org.slf4j.MDC;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.servlet.HandlerMapping;
 import org.springframework.web.util.ContentCachingRequestWrapper;
-import org.springframework.web.util.ContentCachingResponseWrapper;
 
 import java.io.IOException;
 import java.nio.charset.Charset;
@@ -35,6 +36,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class HttpLoggingFilter extends OncePerRequestFilter {
     private static final String REQUEST_ID_HEADER = "X-Request-ID";
@@ -75,52 +78,49 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        if (!properties.isEnabled() || !properties.categoryEnabled(LogCategory.HTTP_REQUEST)) {
+        if (!properties.isEnabled()
+                || (!properties.categoryEnabled(LogCategory.HTTP_REQUEST)
+                && !properties.categoryEnabled(LogCategory.HTTP_RESPONSE))) {
             return true;
         }
         if (containsIgnoreCase(properties.getExcluded().getMethods(), request.getMethod())) {
             return true;
         }
         String uri = request.getRequestURI();
-        return properties.getExcluded().getPaths().stream().anyMatch(path -> path.equals(uri) || (path.endsWith("/**") && uri.startsWith(path.substring(0, path.length() - 3))));
+        return properties.getExcluded().getPaths().stream().anyMatch(path -> pathMatches(path, uri));
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
-        LoggingContextSnapshot previous = contextManager.capture();
+        LoggingContextSnapshot previous = contextManager.captureRaw();
         long start = System.nanoTime();
         Throwable failure = null;
         HttpServletRequest requestWrapper = wrapRequestForLogging(request);
-        ContentCachingResponseWrapper responseWrapper = new ContentCachingResponseWrapper(response);
-        installMdc(requestWrapper);
-        // Pre-snapshot: CachedBodyHttpServletRequest has bytes immediately available.
-        // ContentCachingRequestWrapper only fills its buffer after the chain reads the stream,
-        // so we snapshot again after the chain in the finally block.
-        byte[] preChainPayload = snapshotRequestPayload(requestWrapper);
+        HttpServletResponse responseWrapper = wrapResponseForLogging(response);
+        UserIdentity identity = installMdc(requestWrapper);
         try {
-            writeRequestEvent(requestWrapper, preChainPayload);
+            writeRequestEventSafely(requestWrapper, identity);
             filterChain.doFilter(requestWrapper, responseWrapper);
         } catch (Throwable ex) {
             failure = ex;
             throw ex;
         } finally {
             try {
-                // Re-snapshot after chain: picks up bytes from ContentCachingRequestWrapper
-                // that were only populated after the request body was read.
-                byte[] postChainPayload = snapshotRequestPayload(requestWrapper);
-                byte[] resolvedPayload = postChainPayload.length > 0 ? postChainPayload : preChainPayload;
-                writeResponseEvent(requestWrapper, responseWrapper, start, failure, resolvedPayload);
-            } catch (RuntimeException ex) {
-                logger.warn("HTTP logging failed safely: " + ex);
+                if (requestWrapper.isAsyncStarted()) {
+                    registerAsyncCompletion(requestWrapper, responseWrapper, start, identity);
+                } else {
+                    writeResponseEventSafely(requestWrapper, responseWrapper, start, failure, identity);
+                }
             } finally {
-                responseWrapper.copyBodyToResponse();
-                contextManager.restore(previous);
+                contextManager.restoreRaw(previous);
             }
         }
     }
 
-    private void installMdc(HttpServletRequest request) {
+    private UserIdentity installMdc(HttpServletRequest request) {
+        TraceContext trace = resolveTrace(request);
+        removeManagedMdcKeys();
         String requestId = firstNonBlank(request.getHeader(REQUEST_ID_HEADER), request.getHeader(CORRELATION_ID_HEADER), UUID.randomUUID().toString());
         MDC.put(MdcKeys.REQUEST_ID, requestId);
         MDC.put(MdcKeys.SERVICE, serviceName);
@@ -130,7 +130,6 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
         //   to every line is noise with zero signal. The 'logger' field already classifies the source.
         // - HTTP_REQUEST / HTTP_RESPONSE are set via the event model in writeRequestEvent/writeResponseEvent.
         // - BUSINESS / AUDIT / SECURITY etc. are set explicitly by LoggingService when those events are logged.
-        TraceContext trace = resolveTrace(request);
         if (trace.traceId() != null) {
             MDC.put(MdcKeys.TRACE_ID, trace.traceId());
         }
@@ -146,25 +145,55 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
         if (identity.roles() != null && !identity.roles().isEmpty()) {
             MDC.put(MdcKeys.ROLES, identity.roles().toString());
         }
+        return identity;
     }
 
-    private HttpServletRequest wrapRequestForLogging(HttpServletRequest request) throws IOException {
-        if (!shouldCacheRequestPayloadForRequestLog(request)) {
-            return new ContentCachingRequestWrapper(request, properties.getPayload().getRequestMaxSize());
+    private void removeManagedMdcKeys() {
+        MDC.remove(MdcKeys.REQUEST_ID);
+        MDC.remove(MdcKeys.TRACE_ID);
+        MDC.remove(MdcKeys.SPAN_ID);
+        MDC.remove(MdcKeys.USER_ID);
+        MDC.remove(MdcKeys.ROLES);
+        MDC.remove(MdcKeys.AUTHENTICATED);
+        MDC.remove(MdcKeys.SERVICE);
+        MDC.remove(MdcKeys.ENVIRONMENT);
+        MDC.remove(MdcKeys.TYPE);
+        MDC.remove(MdcKeys.OPERATION);
+    }
+
+    private HttpServletRequest wrapRequestForLogging(HttpServletRequest request) {
+        if (!shouldCaptureRequestPayload(request)) {
+            return request;
         }
-        return new CachedBodyHttpServletRequest(request);
+        return new ContentCachingRequestWrapper(request, Math.max(properties.getPayload().getRequestMaxSize(), 0));
     }
 
-    private boolean shouldCacheRequestPayloadForRequestLog(HttpServletRequest request) {
-        long contentLength = request.getContentLengthLong();
+    private boolean shouldCaptureRequestPayload(HttpServletRequest request) {
         return properties.getInclude().isRequestPayload()
                 && contentCanBeLogged(request.getContentType())
-                && contentLength > 0
-                && contentLength <= properties.getPayload().getRequestMaxSize();
+                && properties.categoryEnabled(LogCategory.HTTP_RESPONSE);
     }
 
-    private void writeRequestEvent(HttpServletRequest request, byte[] snapshotedPayload) {
-        UserIdentity identity = safeUser().orElse(UserIdentity.anonymous());
+    private HttpServletResponse wrapResponseForLogging(HttpServletResponse response) {
+        if (!properties.getInclude().isResponsePayload()
+                || !properties.categoryEnabled(LogCategory.HTTP_RESPONSE)) {
+            return response;
+        }
+        return new BoundedContentCachingResponseWrapper(response, properties.getPayload().getResponseMaxSize());
+    }
+
+    private void writeRequestEventSafely(HttpServletRequest request, UserIdentity identity) {
+        if (!properties.categoryEnabled(LogCategory.HTTP_REQUEST)) {
+            return;
+        }
+        try {
+            writeRequestEvent(request, identity);
+        } catch (RuntimeException ex) {
+            logger.warn("HTTP request logging failed safely: " + ex);
+        }
+    }
+
+    private void writeRequestEvent(HttpServletRequest request, UserIdentity identity) {
         HttpLogEvent event = baseHttpEvent(request, identity);
         event.setType(LogCategory.HTTP_REQUEST);
         event.setLevel(properties.getLevels().getSuccess());
@@ -178,18 +207,26 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
         if (properties.getInclude().isRequestParameters()) {
             event.requestParameters(masker.maskMap(parameters(request), MaskingTarget.QUERY_PARAMETER));
         }
-        // Print request payload in the request event unconditionally (if globally enabled).
-        // It will ALSO be printed in the response event conditionally based on on-status-ranges.
-        if (shouldLogRequestPayload(request) && snapshotedPayload != null && snapshotedPayload.length > 0) {
-            event.requestPayload(payload(snapshotedPayload, request.getCharacterEncoding(), properties.getPayload().getRequestMaxSize()));
-        }
         httpLogWriter.write(event);
     }
 
-    private void writeResponseEvent(HttpServletRequest request, ContentCachingResponseWrapper response,
-                                    long start, Throwable failure, byte[] snapshotedRequestPayload) {
-        int status = response.getStatus();
-        UserIdentity identity = safeUser().orElse(UserIdentity.anonymous());
+    private void writeResponseEventSafely(HttpServletRequest request, HttpServletResponse response,
+                                          long start, Throwable failure, UserIdentity identity) {
+        if (!properties.categoryEnabled(LogCategory.HTTP_RESPONSE)) {
+            return;
+        }
+        try {
+            writeResponseEvent(request, response, start, failure, snapshotRequestPayload(request), identity);
+        } catch (RuntimeException ex) {
+            logger.warn("HTTP response logging failed safely: " + ex);
+        }
+    }
+
+    private void writeResponseEvent(HttpServletRequest request, HttpServletResponse response,
+                                    long start, Throwable failure, byte[] snapshottedRequestPayload,
+                                    UserIdentity identity) {
+        int actualStatus = response.getStatus();
+        int status = failure != null && actualStatus < 400 && !response.isCommitted() ? 500 : actualStatus;
         HttpLogEvent event = baseHttpEvent(request, identity);
         event.setType(LogCategory.HTTP_RESPONSE);
         event.setLevel(levelFor(status, failure));
@@ -212,11 +249,16 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
         // This lets you say "only capture request body on errors (400-599)" without
         // logging it on every successful request.
         if (shouldLogRequestPayloadForResponse(request, status)
-                && snapshotedRequestPayload != null && snapshotedRequestPayload.length > 0) {
-            event.requestPayload(payload(snapshotedRequestPayload, request.getCharacterEncoding(), properties.getPayload().getRequestMaxSize()));
+                && snapshottedRequestPayload != null && snapshottedRequestPayload.length > 0) {
+            event.requestPayload(payload(snapshottedRequestPayload, request.getCharacterEncoding(), properties.getPayload().getRequestMaxSize()));
         }
-        if (shouldLogResponsePayload(response)) {
-            event.responsePayload(payload(response.getContentAsByteArray(), response.getCharacterEncoding(), properties.getPayload().getResponseMaxSize()));
+        if (shouldLogResponsePayload(response) && response instanceof BoundedContentCachingResponseWrapper cached) {
+            String responsePayload = payload(cached.getCapturedContent(), response.getCharacterEncoding(),
+                    properties.getPayload().getResponseMaxSize());
+            if (responsePayload != null && cached.isCaptureTruncated()) {
+                responsePayload += "...[truncated]";
+            }
+            event.responsePayload(responsePayload);
         }
         httpLogWriter.write(event);
     }
@@ -230,10 +272,12 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
     private HttpLogEvent baseHttpEvent(HttpServletRequest request, UserIdentity identity) {
         HttpLogEvent event = new HttpLogEvent();
         event.requestId(MDC.get(MdcKeys.REQUEST_ID))
-                .traceId(MDC.get(MdcKeys.TRACE_ID))
-                .spanId(MDC.get(MdcKeys.SPAN_ID))
                 .method(request.getMethod())
                 .endpoint(endpoint(request));
+        if (properties.getInclude().isTrace()) {
+            event.traceId(MDC.get(MdcKeys.TRACE_ID));
+            event.spanId(MDC.get(MdcKeys.SPAN_ID));
+        }
         if (properties.getInclude().isUser()) {
             event.authenticated(identity.authenticated());
             // Only include userId and roles for authenticated users — avoids logging
@@ -306,26 +350,20 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
     }
 
     /**
-     * Snapshot the request body bytes eagerly (before the filter chain runs) so they
-     * can be attached to both the request event and the response event.
-     * Returns an empty array when payload logging is disabled or the content type is excluded.
+     * Returns the bounded bytes passively cached while the application consumed the request.
+     * No request body is read by the logging filter itself.
      */
     private byte[] snapshotRequestPayload(HttpServletRequest request) {
         if (!shouldLogRequestPayload(request)) {
             return new byte[0];
         }
-        if (request instanceof CachedBodyHttpServletRequest cached) {
-            return cached.getCachedBody();
-        }
-        // For ContentCachingRequestWrapper the body is only available after the
-        // chain reads the stream; return empty here and it will be filled after chain.
         if (request instanceof ContentCachingRequestWrapper cached) {
             return cached.getContentAsByteArray();
         }
         return new byte[0];
     }
 
-    private boolean shouldLogResponsePayload(ContentCachingResponseWrapper response) {
+    private boolean shouldLogResponsePayload(HttpServletResponse response) {
         return properties.getInclude().isResponsePayload() && contentCanBeLogged(response.getContentType());
     }
 
@@ -339,7 +377,12 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
             return null;
         }
         int length = Math.min(bytes.length, Math.max(maxSize, 0));
-        Charset charset = encoding == null ? StandardCharsets.UTF_8 : Charset.forName(encoding);
+        Charset charset;
+        try {
+            charset = encoding == null ? StandardCharsets.UTF_8 : Charset.forName(encoding);
+        } catch (RuntimeException ignored) {
+            charset = StandardCharsets.UTF_8;
+        }
         String value = new String(bytes, 0, length, charset);
         String masked = masker.maskPayload(value);
         return bytes.length > length ? masked + "...[truncated]" : masked;
@@ -412,11 +455,72 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
     }
 
     private static String fullUrl(HttpServletRequest request) {
-        StringBuilder url = new StringBuilder(request.getRequestURL());
-        if (request.getQueryString() != null) {
-            url.append('?').append(request.getQueryString());
+        return request.getRequestURL().toString();
+    }
+
+    private void registerAsyncCompletion(HttpServletRequest request, HttpServletResponse response,
+                                         long start, UserIdentity identity) {
+        try {
+            LoggingContextSnapshot requestContext = contextManager.capture();
+            request.getAsyncContext().addListener(
+                    new AsyncLoggingListener(request, response, start, identity, requestContext));
+        } catch (RuntimeException ex) {
+            logger.warn("Could not register async HTTP logging completion listener: " + ex);
         }
-        return url.toString();
+    }
+
+    private final class AsyncLoggingListener implements AsyncListener {
+        private final HttpServletRequest request;
+        private final HttpServletResponse response;
+        private final long start;
+        private final UserIdentity identity;
+        private final LoggingContextSnapshot requestContext;
+        private final AtomicBoolean written = new AtomicBoolean();
+        private volatile Throwable failure;
+
+        private AsyncLoggingListener(HttpServletRequest request, HttpServletResponse response, long start,
+                                     UserIdentity identity, LoggingContextSnapshot requestContext) {
+            this.request = request;
+            this.response = response;
+            this.start = start;
+            this.identity = identity;
+            this.requestContext = requestContext;
+        }
+
+        @Override
+        public void onComplete(AsyncEvent event) {
+            writeOnce();
+        }
+
+        @Override
+        public void onTimeout(AsyncEvent event) {
+            failure = new TimeoutException("Servlet async request timed out");
+            writeOnce();
+        }
+
+        @Override
+        public void onError(AsyncEvent event) {
+            failure = event.getThrowable();
+            writeOnce();
+        }
+
+        @Override
+        public void onStartAsync(AsyncEvent event) {
+            event.getAsyncContext().addListener(this);
+        }
+
+        private void writeOnce() {
+            if (!written.compareAndSet(false, true)) {
+                return;
+            }
+            LoggingContextSnapshot previous = contextManager.captureRaw();
+            try {
+                contextManager.restore(requestContext);
+                writeResponseEventSafely(request, response, start, failure, identity);
+            } finally {
+                contextManager.restoreRaw(previous);
+            }
+        }
     }
 
     private String levelFor(int status, Throwable failure) {
@@ -436,6 +540,20 @@ public class HttpLoggingFilter extends OncePerRequestFilter {
             }
         }
         return false;
+    }
+
+    private static boolean pathMatches(String configuredPath, String uri) {
+        if (configuredPath == null || configuredPath.isBlank()) {
+            return false;
+        }
+        if (configuredPath.equals(uri)) {
+            return true;
+        }
+        if (!configuredPath.endsWith("/**")) {
+            return false;
+        }
+        String base = configuredPath.substring(0, configuredPath.length() - 3);
+        return uri.equals(base) || uri.startsWith(base + "/");
     }
 
     private static String firstNonBlank(String... values) {

@@ -4,13 +4,14 @@ The starter avoids expensive work unless the corresponding feature is enabled.
 
 ## Controls
 
-- Request and response payload logging is bounded by `request-max-size` and `response-max-size`.
-- Successful request payloads are omitted by default.
+- Request payload retention and response payload capture are bounded by `request-max-size` and `response-max-size`.
+- Request bodies are emitted only with the final response event and can be restricted to error responses.
 - Response payload logging is disabled by default.
+- Responses are forwarded directly to the client; response logging retains only the configured prefix.
 - Binary and multipart payloads are skipped by default.
 - Caller class/method stack inspection is disabled by default.
 - Method-level timing through AOP is not enabled; explicit `TimerContext` is used instead.
-- HTTP logging is one event per request, not multiple events around every filter stage.
+- HTTP logging emits one request event and one response event when both categories are enabled.
 - Context propagation captures a small allowlisted MDC map, not all process state.
 
 ## Tests Included

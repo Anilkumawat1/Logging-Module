@@ -32,8 +32,12 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import jakarta.servlet.AsyncContext;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class HttpLoggingFilterTest {
     private final LoggingProperties properties = new LoggingProperties();
@@ -170,7 +174,9 @@ class HttpLoggingFilterTest {
 
         filter.doFilter(request, response, chain);
 
+        HttpLogEvent requestEvent = writer.events.get(0);
         HttpLogEvent responseEvent = writer.events.get(1);
+        assertThat(requestEvent.getFields()).doesNotContainKey("request_payload");
         assertThat(responseEvent.getFields()).doesNotContainKey("request_payload");
     }
 
@@ -269,6 +275,153 @@ class HttpLoggingFilterTest {
         assertThat(responseEvent.getFields()).containsEntry("authenticated", false);
     }
 
+    @Test
+    void urlNeverContainsTheRawQueryString() throws Exception {
+        HttpLoggingFilter filter = filter();
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/search");
+        request.setQueryString("token=QUERY_SECRET&q=book");
+        request.addParameter("token", "QUERY_SECRET");
+        request.addParameter("q", "book");
+
+        filter.doFilter(request, new MockHttpServletResponse(), (req, res) -> { });
+
+        assertThat(writer.events.get(0).getFields().get("url").toString())
+                .doesNotContain("QUERY_SECRET", "token=", "q=book")
+                .endsWith("/api/search");
+        assertThat((Map<String, Object>) writer.events.get(0).getFields().get("request_parameters"))
+                .containsEntry("token", "***")
+                .containsEntry("q", "book");
+    }
+
+    @Test
+    void requestAndResponseCategoriesCanBeDisabledIndependently() throws Exception {
+        properties.getCategories().put(LogCategory.HTTP_REQUEST, false);
+        HttpLoggingFilter filter = filter();
+
+        filter.doFilter(new MockHttpServletRequest("GET", "/response-only"),
+                new MockHttpServletResponse(), (req, res) -> { });
+
+        assertThat(writer.events).singleElement()
+                .extracting(HttpLogEvent::getType)
+                .isEqualTo(LogCategory.HTTP_RESPONSE);
+
+        writer.events.clear();
+        properties.getCategories().put(LogCategory.HTTP_REQUEST, true);
+        properties.getCategories().put(LogCategory.HTTP_RESPONSE, false);
+
+        filter.doFilter(new MockHttpServletRequest("GET", "/request-only"),
+                new MockHttpServletResponse(), (req, res) -> { });
+
+        assertThat(writer.events).singleElement()
+                .extracting(HttpLogEvent::getType)
+                .isEqualTo(LogCategory.HTTP_REQUEST);
+    }
+
+    @Test
+    void globallyDisabledLoggingStillAllowsTheRequest() throws Exception {
+        properties.setEnabled(false);
+        AtomicBoolean invoked = new AtomicBoolean();
+
+        filter().doFilter(new MockHttpServletRequest("GET", "/disabled"),
+                new MockHttpServletResponse(), (req, res) -> invoked.set(true));
+
+        assertThat(invoked).isTrue();
+        assertThat(writer.events).isEmpty();
+    }
+
+    @Test
+    void writerFailureNeverPreventsApplicationExecutionAndMdcIsRestored() throws Exception {
+        AtomicBoolean invoked = new AtomicBoolean();
+        HttpLoggingFilter filter = filterWithWriter(event -> {
+            throw new IllegalStateException("writer unavailable");
+        });
+        MDC.put("upstream", "keep-me");
+        MDC.put(MdcKeys.USER_ID, "upstream-user");
+
+        filter.doFilter(new MockHttpServletRequest("GET", "/writer-failure"),
+                new MockHttpServletResponse(), (req, res) -> invoked.set(true));
+
+        assertThat(invoked).isTrue();
+        assertThat(MDC.get("upstream")).isEqualTo("keep-me");
+        assertThat(MDC.get(MdcKeys.USER_ID)).isEqualTo("upstream-user");
+    }
+
+    @Test
+    void staleManagedMdcIsNotVisibleInsideAnonymousRequest() throws Exception {
+        MDC.put(MdcKeys.USER_ID, "stale-user");
+        HttpLoggingFilter filter = filterWithIdentityProvider(() -> java.util.Optional.of(UserIdentity.anonymous()));
+        AtomicBoolean checked = new AtomicBoolean();
+
+        filter.doFilter(new MockHttpServletRequest("GET", "/anonymous"),
+                new MockHttpServletResponse(), (req, res) -> {
+                    assertThat(MDC.get(MdcKeys.USER_ID)).isNull();
+                    checked.set(true);
+                });
+
+        assertThat(checked).isTrue();
+        assertThat(MDC.get(MdcKeys.USER_ID)).isEqualTo("stale-user");
+    }
+
+    @Test
+    void responseCaptureIsBoundedWithoutTruncatingClientResponse() throws Exception {
+        properties.getInclude().setResponsePayload(true);
+        properties.getPayload().setResponseMaxSize(4);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter().doFilter(new MockHttpServletRequest("GET", "/large"), response,
+                (req, res) -> {
+                    res.setContentType("text/plain");
+                    res.getWriter().write("0123456789");
+                    res.getWriter().flush();
+                });
+
+        assertThat(response.getContentAsString()).isEqualTo("0123456789");
+        assertThat(writer.events.get(1).getFields().get("response_payload"))
+                .isEqualTo("0123...[truncated]");
+    }
+
+    @Test
+    void unresolvedExceptionIsLoggedWithEffective500Status() {
+        HttpLoggingFilter filter = filter();
+
+        assertThatThrownBy(() -> filter.doFilter(
+                new MockHttpServletRequest("GET", "/boom"),
+                new MockHttpServletResponse(),
+                (req, res) -> { throw new ServletException("boom"); }))
+                .isInstanceOf(ServletException.class);
+
+        assertThat(writer.events.get(1).getFields()).containsEntry("response_status", 500);
+        assertThat(writer.events.get(1).getLevel()).isEqualTo("ERROR");
+    }
+
+    @Test
+    void wildcardExclusionMatchesOnlyTheConfiguredPathBoundary() {
+        properties.getExcluded().setPaths(List.of("/api/**"));
+        HttpLoggingFilter filter = filter();
+
+        assertThat(filter.shouldNotFilter(new MockHttpServletRequest("GET", "/api"))).isTrue();
+        assertThat(filter.shouldNotFilter(new MockHttpServletRequest("GET", "/api/orders"))).isTrue();
+        assertThat(filter.shouldNotFilter(new MockHttpServletRequest("GET", "/apix/orders"))).isFalse();
+    }
+
+    @Test
+    void asyncResponseIsLoggedOnCompletionRatherThanInitialDispatch() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/async");
+        request.setAsyncSupported(true);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AtomicReference<AsyncContext> asyncContext = new AtomicReference<>();
+
+        filter().doFilter(request, response, (req, res) -> asyncContext.set(req.startAsync()));
+
+        assertThat(writer.events).singleElement()
+                .extracting(HttpLogEvent::getType).isEqualTo(LogCategory.HTTP_REQUEST);
+
+        asyncContext.get().complete();
+
+        assertThat(writer.events).hasSize(2);
+        assertThat(writer.events.get(1).getType()).isEqualTo(LogCategory.HTTP_RESPONSE);
+    }
+
     private HttpLoggingFilter filter() {
         JsonSensitiveDataMasker masker = new JsonSensitiveDataMasker(properties, objectMapper);
         return new HttpLoggingFilter(properties,
@@ -281,6 +434,25 @@ class HttpLoggingFilterTest {
                 writer,
                 "order-service",
                 "test");
+    }
+
+    private HttpLoggingFilter filterWithWriter(HttpLogWriter customWriter) {
+        JsonSensitiveDataMasker masker = new JsonSensitiveDataMasker(properties, objectMapper);
+        return new HttpLoggingFilter(properties,
+                new MdcLoggingContextManager(properties), masker,
+                new DefaultClientIpResolver(properties),
+                () -> java.util.Optional.of(new UserIdentity("1001", List.of("ADMIN"), true)),
+                new DefaultTraceContextProvider(), new DefaultOperationResolver(properties),
+                customWriter, "order-service", "test");
+    }
+
+    private HttpLoggingFilter filterWithIdentityProvider(com.anil.logging.security.UserIdentityProvider provider) {
+        JsonSensitiveDataMasker masker = new JsonSensitiveDataMasker(properties, objectMapper);
+        return new HttpLoggingFilter(properties,
+                new MdcLoggingContextManager(properties), masker,
+                new DefaultClientIpResolver(properties), provider,
+                new DefaultTraceContextProvider(), new DefaultOperationResolver(properties),
+                writer, "order-service", "test");
     }
 
     /** Uses the real {@link DefaultUserIdentityProvider} backed by Spring Security context. */

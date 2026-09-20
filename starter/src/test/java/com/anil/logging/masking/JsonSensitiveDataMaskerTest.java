@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -35,5 +36,28 @@ class JsonSensitiveDataMaskerTest {
         String masked = masker.maskPayload("password=secret token=abc123");
 
         assertThat(masked).doesNotContain("secret", "abc123").contains("password=***", "token=***");
+    }
+
+    @Test
+    void recursivelyMasksNestedStructuredValues() {
+        Object masked = masker.maskValue("customer", Map.of(
+                "name", "Anil",
+                "credentials", Map.of("password", "SECRET"),
+                "cards", List.of(Map.of("cvv", "123"))));
+
+        assertThat(masked.toString()).doesNotContain("SECRET", "123")
+                .contains("password=***", "cvv=***");
+    }
+
+    @Test
+    void disablingMaskingAppliesConsistentlyToMapsAndPayloads() {
+        LoggingProperties properties = new LoggingProperties();
+        properties.getMasking().setEnabled(false);
+        JsonSensitiveDataMasker disabled = new JsonSensitiveDataMasker(properties, new ObjectMapper());
+
+        assertThat(disabled.maskPayload("{\"password\":\"SECRET\"}")).contains("SECRET");
+        assertThat((Map<String, Object>) disabled.maskMap(
+                Map.of("Authorization", "Bearer SECRET"), MaskingTarget.HEADER))
+                .containsEntry("Authorization", "Bearer SECRET");
     }
 }

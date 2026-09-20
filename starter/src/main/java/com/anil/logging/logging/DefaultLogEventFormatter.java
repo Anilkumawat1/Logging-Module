@@ -47,16 +47,22 @@ public class DefaultLogEventFormatter implements LogEventFormatter {
 
     private Map<String, Object> toMap(LogEvent event) {
         Map<String, Object> map = new LinkedHashMap<>();
+        boolean httpEvent = event.getType() == com.anil.logging.model.LogCategory.HTTP_REQUEST
+                || event.getType() == com.anil.logging.model.LogCategory.HTTP_RESPONSE;
         map.put("timestamp", DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(event.getTimestamp()));
         map.put("level", event.getLevel());
         map.put("type", event.getType());
         putIfEnabled(map, "service", serviceName, properties.getContext().getFields().isService());
         putIfEnabled(map, "environment", environment, properties.getContext().getFields().isEnvironment());
         putMdc(map, MdcKeys.REQUEST_ID, properties.getContext().getFields().isRequestId());
-        putMdc(map, MdcKeys.TRACE_ID, properties.getContext().getFields().isTraceId());
-        putMdc(map, MdcKeys.SPAN_ID, properties.getContext().getFields().isSpanId());
-        putMdc(map, MdcKeys.USER_ID, properties.getContext().getFields().isUserId());
-        putMdc(map, MdcKeys.ROLES, properties.getContext().getFields().isRoles());
+        putMdc(map, MdcKeys.TRACE_ID, properties.getContext().getFields().isTraceId()
+                && (!httpEvent || properties.getInclude().isTrace()));
+        putMdc(map, MdcKeys.SPAN_ID, properties.getContext().getFields().isSpanId()
+                && (!httpEvent || properties.getInclude().isTrace()));
+        putMdc(map, MdcKeys.USER_ID, properties.getContext().getFields().isUserId()
+                && (!httpEvent || properties.getInclude().isUser()));
+        putMdc(map, MdcKeys.ROLES, properties.getContext().getFields().isRoles()
+                && (!httpEvent || properties.getInclude().isUser()));
         if (properties.getInclude().isThread()) {
             map.put("thread", Thread.currentThread().getName());
         }
@@ -66,7 +72,7 @@ public class DefaultLogEventFormatter implements LogEventFormatter {
         map.put("message", masker.maskPayload(event.getMessage()));
         event.getFields().forEach((key, value) -> {
             String fieldName = toSnakeCase(key);
-            map.put(fieldName, jsonPayloadValue(fieldName, masker.maskValue(fieldName, value)));
+            map.putIfAbsent(fieldName, jsonPayloadValue(fieldName, masker.maskValue(fieldName, value)));
         });
         if (event.getThrowable() != null) {
             map.put("exception", exceptionMap(event.getThrowable()));
@@ -107,7 +113,7 @@ public class DefaultLogEventFormatter implements LogEventFormatter {
         Map<String, Object> exception = new LinkedHashMap<>();
         exception.put("type", throwable.getClass().getName());
         exception.put("message", masker.maskPayload(truncate(throwable.getMessage(), 2_000)));
-        exception.put("stack_trace", stackTrace(throwable));
+        exception.put("stack_trace", masker.maskPayload(stackTrace(throwable)));
         return exception;
     }
 
